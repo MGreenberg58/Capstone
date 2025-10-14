@@ -1,103 +1,96 @@
 import pygame
+import pymunk
 import math
 import sys
-from collections import deque
 
-# --- Parameters / scaling ---
+# --- Init PyGame ---
 pygame.init()
 WIDTH, HEIGHT = 1000, 700
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Crane — full physics (meter-based)")
+pygame.display.set_caption("Crane — Real-World Physics")
 
 clock = pygame.time.Clock()
 FPS = 120
-dt = 1.0 / FPS
 
-# physics units: meters
-PIXELS_PER_M = 40.0
-BASE_X_PX = 200
-BASE_Y_PX = HEIGHT - 120
+# --- Conversion factor ---
+PIXELS_PER_M = 100.0
+BASE_X, BASE_Y = 200, HEIGHT - 120
 
-# initial crane geometry (in meters)
-boom_length_m = 5.0
-boom_angle_deg = 45.0
-hoist_length_m = 4.0
+def to_pygame(pos):
+    """Convert physics (meters) to screen pixels."""
+    x, y = pos
+    return int(BASE_X + x * PIXELS_PER_M), int(BASE_Y - y * PIXELS_PER_M)
 
-# control speeds (physical units)
-boom_angle_rate_deg_per_s = 30.0
-boom_length_rate_m_per_s = 1
-hoist_rate_m_per_s = 0.75
+# --- Pymunk Space ---
+space = pymunk.Space()
+space.gravity = (0.0, -9.81)  # m/s^2 downward (real units)
 
-payload_radius_px = int(0.5 * PIXELS_PER_M)  # 0.5 m radius visually
+base_pos = (0, 0)
+base_body = pymunk.Body(body_type=pymunk.Body.STATIC)
+base_body.position = base_pos
 
-# pendulum state
-theta = 0.0
-theta_dot = 0.0
+# --- Crane Boom ---
+boom_length = 5.0
+boom_mass = 20.0
+boom_moment = pymunk.moment_for_segment(boom_mass, (-boom_length/2,0), (boom_length/2,0), 0.1)
+boom_body = pymunk.Body(boom_mass, boom_moment)
 
-g = 9.81
+# Set COM so that left end aligns with base
+pivot_world = base_body.position
+boom_body.position = pivot_world + pymunk.Vec2d(boom_length/2, 0)
 
-# smoothing buffers for numerical derivatives (meters)
-vel_buf_x = deque(maxlen=4)
-vel_buf_y = deque(maxlen=4)
-acc_buf_x = deque(maxlen=4)
-acc_buf_y = deque(maxlen=4)
-L_dot_buf = deque(maxlen=4)
-L_ddot_buf = deque(maxlen=4)
+boom_shape = pymunk.Segment(boom_body, (-boom_length/2,0), (boom_length/2,0), 0.1)
+boom_shape.color = (240,200,0,255)
+space.add(boom_body, boom_shape)
 
-# previous pivot pos/length (in meters)
-prev_pivot_m = None
-prev_pivot_vx = 0.0
-prev_pivot_vy = 0.0
-prev_hoist_length_m = hoist_length_m
-prev_hoist_v = 0.0
+# Pivot joint
+pivot = pymunk.PinJoint(base_body, boom_body, (0,0), (-boom_length/2,0))
+space.add(pivot)
 
-theta_damping = 0.995
+# Limit rotation
+rot_limit = pymunk.RotaryLimitJoint(base_body, boom_body, -math.pi/3, math.pi/2)
+space.add(rot_limit)
 
-font = pygame.font.SysFont("Consolas", 18)
+# --- Payload ---
+payload_mass = 3.0       # kg
+payload_radius = 0.5     # m
+payload_moment = pymunk.moment_for_circle(payload_mass, 0, payload_radius)
+payload_body = pymunk.Body(payload_mass, payload_moment)
 
-def world_to_screen(x_m, y_m):
-    """convert world meters (x right, y down) relative to base_pos to screen pixels"""
-    px = BASE_X_PX + x_m * PIXELS_PER_M
-    py = BASE_Y_PX + y_m * PIXELS_PER_M
-    return int(px), int(py)
+# Hoist cable
+hoist_length = 4.0  # meters
+payload_body.position = (boom_length/2, -hoist_length)
+payload_shape = pymunk.Circle(payload_body, payload_radius)
+payload_shape.color = (200, 40, 40, 255)
+space.add(payload_body, payload_shape)
 
-def draw_crane(boom_tip_m, payload_m):
-    screen.fill((245,245,245))
-    # base
-    pygame.draw.rect(screen, (130,130,130), (BASE_X_PX-20, BASE_Y_PX, 40, 120))
-    # boom
-    pygame.draw.line(screen, (240,200,0), (BASE_X_PX, BASE_Y_PX),
-                     world_to_screen(*boom_tip_m), 8)
-    # hoist cable
-    pygame.draw.line(screen, (40,40,40),
-                     world_to_screen(*boom_tip_m),
-                     world_to_screen(*payload_m), 2)
-    # payload
-    payload_px = world_to_screen(payload_m[0], payload_m[1])
-    pygame.draw.circle(screen, (200,40,40),
-                       (payload_px[0], payload_px[1] + payload_radius_px),
-                       payload_radius_px)
-    # overlay text
-    lines = [
-        f"boom_length = {boom_length_m:.2f} m",
-        f"boom_angle = {boom_angle_deg:.2f} deg",
-        f"hoist_length = {hoist_length_m:.2f} m",
-        f"theta  (swing) = {math.degrees(theta):.2f} deg",
-        f"theta_dot = {math.degrees(theta_dot):.2f} deg/s",
-        "Controls: Q/E angle up/down | D/A extend/retract boom | W/S hoist in/out | Esc to quit"
-    ]
-    for i, l in enumerate(lines):
-        screen.blit(font.render(l, True, (10,10,10)), (20, 20 + 22*i))
-    pygame.display.flip()
+# Damped spring simulating hoist cable
+spring = pymunk.DampedSpring(
+    boom_body, payload_body,
+    (boom_length/2, 0),  # boom tip
+    (0, 0),              # payload center
+    hoist_length,
+    stiffness=2000.0,    # N/m
+    damping=50.0          # N*s/m
+)
+space.add(spring)
 
-def avg(buf):
-    if len(buf) == 0: return 0.0
-    return sum(buf) / len(buf)
+def damped_velocity_func(body, gravity, damping, dt):
+    pymunk.Body.update_velocity(body, gravity, body.damping, dt)
 
-# main loop
+boom_body.velocity_func = damped_velocity_func
+payload_body.velocity_func = damped_velocity_func
+
+# --- User control parameters ---
+boom_torque_mag = 800.0  # N*m
+hoist_speed = 0.01          # m per frame
+boom_body.damping = 0.99
+payload_body.damping = 0.995
+
+# --- Main Loop ---
 running = True
 while running:
-    # handle events
+    # Event handling
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
@@ -105,82 +98,58 @@ while running:
     if keys[pygame.K_ESCAPE]:
         running = False
 
-    # controls: set commanded velocities (deg/s or m/s)
+    # --- Controls ---
     if keys[pygame.K_q]:
-        boom_angle_deg += boom_angle_rate_deg_per_s * dt
+        boom_body.torque += boom_torque_mag
     if keys[pygame.K_e]:
-        boom_angle_deg -= boom_angle_rate_deg_per_s * dt
-    if keys[pygame.K_d]:
-        boom_length_m += boom_length_rate_m_per_s * dt
-    if keys[pygame.K_a]:
-        boom_length_m -= boom_length_rate_m_per_s * dt
+        boom_body.torque += -boom_torque_mag
     if keys[pygame.K_w]:
-        hoist_length_m -= hoist_rate_m_per_s * dt
+        hoist_length = max(0.5, hoist_length - hoist_speed)
+        spring.rest_length = hoist_length
     if keys[pygame.K_s]:
-        hoist_length_m += hoist_rate_m_per_s * dt
+        hoist_length = min(10.0, hoist_length + hoist_speed)
+        spring.rest_length = hoist_length
 
-    # clamp geometry to safe ranges
-    boom_angle_deg = max(0.0, min(90.0, boom_angle_deg))
-    boom_length_m = max(1.0, min(15.0, boom_length_m))
-    hoist_length_m = max(0.25, min(10.0, hoist_length_m))
-
-    # compute pivot (boom tip) in meters relative to base:
-    phi_rad = math.radians(-boom_angle_deg) 
-    pivot_x_m = boom_length_m * math.cos(phi_rad)
-    pivot_y_m = boom_length_m * math.sin(phi_rad)
-    pivot_m = (pivot_x_m, pivot_y_m)
-
-    # numerical differentiation for pivot velocity & acceleration (in meters/sec)
-    if prev_pivot_m is None:
-        vx = vy = 0.0
+    if keys[pygame.K_q] or keys[pygame.K_e]:
+        boom_body.damping = 0.99
     else:
-        prev_x_m, prev_y_m = prev_pivot_m
-        vx = (pivot_x_m - prev_x_m) / dt
-        vy = (pivot_y_m - prev_y_m) / dt
+        boom_body.damping = 0.8
 
-    vel_buf_x.append(vx)
-    vel_buf_y.append(vy)
-    vx_f = avg(vel_buf_x)
-    vy_f = avg(vel_buf_y)
+    # --- Step physics ---
+    space.step(1.0 / FPS)
 
-    ax = (vx_f - prev_pivot_vx) / dt
-    ay = (vy_f - prev_pivot_vy) / dt
-    acc_buf_x.append(ax)
-    acc_buf_y.append(ay)
-    ax_f = avg(acc_buf_x)
-    ay_f = avg(acc_buf_y)
-    prev_pivot_vx = vx_f
-    prev_pivot_vy = vy_f
+    # --- Rendering ---
+    screen.fill((245, 245, 245))
 
-    # hoist length derivatives (m/s and m/s^2) with smoothing
-    L_dot = (hoist_length_m - prev_hoist_length_m) / dt
-    L_dot_buf.append(L_dot)
-    L_dot_f = avg(L_dot_buf)
-    L_ddot = (L_dot_f - prev_hoist_v) / dt
-    L_ddot_buf.append(L_ddot)
-    L_ddot_f = avg(L_ddot_buf)
-    prev_hoist_v = L_dot_f
-    prev_hoist_length_m = hoist_length_m
+    # Draw base
+    pygame.draw.rect(screen, (130,130,130), (BASE_X-20, BASE_Y, 40, 120))
 
-    # pendulum physics all in meters, radians
-    L = hoist_length_m
-    theta_ddot = -(g / L) * math.sin(theta) - (1.0 / L) * (
-        ax_f * math.cos(theta) + ay_f * math.sin(theta) + 2.0 * L_dot_f * theta_dot
-    )
-    theta_dot += theta_ddot * dt
-    theta_dot *= theta_damping
-    theta += theta_dot * dt
+    # Boom
+    boom_tip_world = boom_body.position + pymunk.Vec2d(boom_length/2, 0).rotated(boom_body.angle)
+    boom_start_world = boom_body.position + pymunk.Vec2d(-boom_length/2, 0).rotated(boom_body.angle)
+    boom_start_pixel = to_pygame(boom_start_world)
+    boom_end_pixel = to_pygame(boom_tip_world)
+    pygame.draw.line(screen, (240,200,0), boom_start_pixel, boom_end_pixel, 8)
 
-    # compute payload position in meters
-    boom_tip_m = (pivot_x_m, pivot_y_m)
-    payload_x_m = pivot_x_m + L * math.sin(theta)
-    payload_y_m = pivot_y_m + L * math.cos(theta)
-    payload_m = (payload_x_m, payload_y_m)
+    # Hoist cable
+    payload_px = to_pygame(payload_body.position)
+    pygame.draw.line(screen, (40,40,40), boom_end_pixel, payload_px, 2)
 
-    draw_crane(boom_tip_m, payload_m)
+    # Payload
+    pygame.draw.circle(screen, (200,40,40), payload_px, int(PIXELS_PER_M * payload_radius))
 
-    prev_pivot_m = pivot_m
+    # Overlay text
+    font = pygame.font.SysFont("Consolas", 18)
+    lines = [
+        f"boom_angle = {math.degrees(boom_body.angle)%360:.2f} deg",
+        f"hoist_length = {spring.rest_length:.2f} m",
+        f"payload_pos = ({payload_body.position.x:.2f}, {payload_body.position.y:.2f}) m",
+        "Controls: Q/E rotate boom, W/S up/down winch, Esc quit"
+    ]
+    for i, l in enumerate(lines):
+        screen.blit(font.render(l, True, (10,10,10)), (20, 20 + 22*i))
 
+    pygame.display.flip()
     clock.tick(FPS)
 
 pygame.quit()
