@@ -1,20 +1,24 @@
+# crane_sim_with_skfuzzy.py
 import pygame
 import pymunk
 import math
 import sys
+import numpy as np
+import skfuzzy as fuzz
+from skfuzzy import control as ctrl
+from collections import deque
 
 # --- Init PyGame ---
 pygame.init()
-WIDTH, HEIGHT = 1000, 700
+WIDTH, HEIGHT = 1920, 1080
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Crane — Real-World Physics")
-
+pygame.display.set_caption("Crane — Real-World Physics + scikit-fuzzy FIS")
 clock = pygame.time.Clock()
 FPS = 120
 
 # --- Conversion factor ---
-PIXELS_PER_M = 100.0
-BASE_X, BASE_Y = 200, HEIGHT - 120
+PIXELS_PER_M = 10.0
+BASE_X, BASE_Y = 100, HEIGHT - 100
 
 def to_pygame(pos):
     x, y = pos
@@ -30,14 +34,14 @@ base_body.position = (0.0, 0.0)  # world coords (meters)
 space.add(base_body)
 
 # --- Parameters ---
-boom_length = 5.0
-boom_mass = 20.0
-boom_thickness = 0.1
+boom_length = 20.0
+boom_mass = 50.0
+boom_thickness = 0.5
 
-payload_mass = 3.0
-payload_radius = 0.3
+payload_mass = 100.0
+payload_radius = 1
 
-hoist_length = 4.0  # meters
+hoist_length = 20.0  # meters
 
 # placeholders for globals that functions will set
 boom_body = None
@@ -98,8 +102,8 @@ def create_spring(length):
         (length/2.0, 0.0),  # anchor on boom in boom-local coords
         (0.0, 0.0),         # anchor on payload (its COM)
         hoist_length,
-        stiffness=2000.0,
-        damping=50.0
+        stiffness=100000.0,
+        damping=10.0
     )
     space.add(spring)
 
@@ -144,7 +148,97 @@ def create_boom(length):
     # recreate spring attached to new tip
     create_spring(length)
 
-    # Optionally reposition payload if it ended up far away (we keep payload state so user can see continuity)
+def visualizeFis():
+    panel_x = 760
+    panel_w = WIDTH - panel_x - 20
+    panel_y = 20
+    panel_h = HEIGHT - 40
+    pygame.draw.rect(screen, (230, 230, 230), (panel_x, panel_y, panel_w, panel_h))
+    pygame.draw.rect(screen, (200, 200, 200), (panel_x+6, panel_y+6, panel_w-12, panel_h-12))
+
+    # Draw cg
+    cg_px = to_pygame(cg_pos)
+    pygame.draw.circle(screen, (0, 0, 255), cg_px, 8)   
+
+    font = pygame.font.SysFont("Consolas", 16)
+    bigfont = pygame.font.SysFont("Consolas", 18, bold=True)
+
+    # show inputs
+    label_x = panel_x + 20
+    current_y = panel_y + 20
+    screen.blit(bigfont.render("FIS — CraneSafetyFIS (scikit-fuzzy)", True, (10,10,10)), (label_x, current_y))
+    current_y += 30
+    lines = [
+        f"BoomLength (BL): {BL_input:.2f} m",
+        f"CGDistance (CGD): {CGD_input:.2f} m",
+        f"PayloadHeight (PH): {PH_input:.2f} m (hoist length)"
+    ]
+    for l in lines:
+        screen.blit(font.render(l, True, (10,10,10)), (label_x, current_y))
+        current_y += 22
+
+    current_y += 10
+    # bars for outputs
+    ca_x = label_x
+    ca_y = current_y
+    screen.blit(font.render("ControlAdjustment:", True, (10,10,10)), (ca_x, ca_y))
+    ca_y += 20
+    bar_w = panel_w - 60
+    bar_h = 18
+    pygame.draw.rect(screen, (180,180,180), (ca_x, ca_y, bar_w, bar_h))
+    filled = int((control_adj / 3.0) * bar_w)
+    pygame.draw.rect(screen, (80, 140, 220), (ca_x, ca_y, filled, bar_h))
+    screen.blit(font.render(f"{control_adj:.3f} / 3.0", True, (10,10,10)), (ca_x + bar_w + 6, ca_y))
+
+    ca_y += 36
+    screen.blit(font.render("OperatorFeedback:", True, (10,10,10)), (ca_x, ca_y))
+    ca_y += 20
+    pygame.draw.rect(screen, (180,180,180), (ca_x, ca_y, bar_w, bar_h))
+    filled2 = int((feedback_lvl / 2.0) * bar_w)
+    pygame.draw.rect(screen, (220, 110, 80), (ca_x, ca_y, filled2, bar_h))
+    screen.blit(font.render(f"{feedback_lvl:.3f} / 2.0", True, (10,10,10)), (ca_x + bar_w + 6, ca_y))
+
+    ca_y += 36
+    screen.blit(font.render("Applied horizontal force (N):", True, (10,10,10)), (ca_x, ca_y))
+    ca_y += 18
+    screen.blit(font.render(f"{force_x:.3f} N (payload_mass * x_ddot)", True, (10,10,10)), (ca_x, ca_y))
+
+    # small swing angle plot at bottom of panel
+    plot_h = 160
+    plot_w = panel_w - 40
+    plot_x = panel_x + 20
+    plot_y = panel_y + panel_h - plot_h - 20
+    pygame.draw.rect(screen, (245,245,245), (plot_x, plot_y, plot_w, plot_h))
+    pygame.draw.rect(screen, (200,200,200), (plot_x, plot_y, plot_w, plot_h), 1)
+    screen.blit(font.render("Payload Swing Angle (deg)", True, (10,10,10)), (plot_x + 6, plot_y + 6))
+
+    if len(angle_history) > 1:
+        arr = np.array(angle_history)
+        arr_deg = arr * 180.0 / math.pi
+        y_limit = max(10.0, np.max(np.abs(arr_deg)))
+        Np = len(arr_deg)
+        xs = np.linspace(plot_x + 10, plot_x + plot_w - 10, Np)
+        ys = plot_y + plot_h/2 - (arr_deg / y_limit) * (plot_h/2 - 20)
+        points = [(int(xs[i]), int(ys[i])) for i in range(Np)]
+        if len(points) > 1:
+            pygame.draw.lines(screen, (60, 160, 60), False, points, 2)
+        zero_y = int(plot_y + plot_h/2)
+        pygame.draw.line(screen, (180,180,180), (plot_x+6, zero_y), (plot_x+plot_w-6, zero_y), 1)
+        screen.blit(font.render(f"+{y_limit:.0f}°", True, (10,10,10)), (plot_x + plot_w - 50, plot_y + 8))
+        screen.blit(font.render(f"-{y_limit:.0f}°", True, (10,10,10)), (plot_x + plot_w - 50, plot_y + plot_h - 20))
+
+    # overlays (left side)
+    font_sm = pygame.font.SysFont("Consolas", 18)
+    lines_left = [
+        f"boom_angle = {math.degrees(boom_body.angle)%360:.2f} deg",
+        f"boom_length = {boom_length:.2f} m",
+        f"hoist_length = {spring.rest_length:.2f} m",
+        f"payload_pos = ({payload_body.position.x:.2f}, {payload_body.position.y:.2f}) m",
+        f"CGDistance (computed) = {CGD_input:.2f} m",
+        "Controls: Q/E rotate, A/D extend/retract, W/S winch, Esc quit"
+    ]
+    for i, l in enumerate(lines_left):
+        screen.blit(font_sm.render(l, True, (10, 10, 10)), (20, 20 + 22*i))
 
 
 # --- initialize boom & spring properly (order matters) ---
@@ -168,22 +262,97 @@ boom_body.damping = 0.99
 payload_body.damping = 0.995
 
 # --- user control params ---
-boom_torque_up = 700
+boom_torque_up = 20000
 boom_torque_down = 0
-hoist_speed = 0.01       # m per frame
-extend_speed = 0.02      # m per frame
+hoist_speed = 0.03       # m per frame
+extend_speed = 0.03      # m per frame
 boom_min_len = 3.0
-boom_max_len = 12.0
+boom_max_len = 100.0
 
 # PD hold vars
 boom_target_angle = boom_body.angle
 was_rotating = False
-k_p = 12000.0
-k_d = 2500.0
+k_p = 750000.0
+k_d = 200000.0
 
-# --- Main Loop ---
+# --- FIS using scikit-fuzzy (translated from your MATLAB mamfis) ---
+# Create Antecedents / Consequents
+u_bl = np.arange(0, boom_max_len, 1)  
+u_cgd = np.arange(0, 20, 0.1)  
+u_ph = np.arange(0, boom_max_len, 1) 
+
+BoomLength = ctrl.Antecedent(u_bl, 'BoomLength')
+CGDistance = ctrl.Antecedent(u_cgd, 'CGDistance')
+PayloadHeight = ctrl.Antecedent(u_ph, 'PayloadHeight')
+
+u_ctrl = np.arange(0, 3.01, 0.01)   # ControlAdjustment 0..3
+u_feed = np.arange(0, 2.01, 0.01)   # OperatorFeedback 0..2
+ControlAdjustment = ctrl.Consequent(u_ctrl, 'ControlAdjustment')
+OperatorFeedback = ctrl.Consequent(u_feed, 'OperatorFeedback')
+
+# Membership functions (trapmf/trimf) matching MATLAB spec
+BoomLength['Short']  = fuzz.trapmf(BoomLength.universe, [0, 5, 15, 20])
+BoomLength['Medium'] = fuzz.trapmf(BoomLength.universe, [15, 20, 30, 50])
+BoomLength['Long']   = fuzz.trapmf(BoomLength.universe, [40, 60, 100, 100])
+
+CGDistance['Close']  = fuzz.trapmf(CGDistance.universe, [0, 0, 0, 3])
+CGDistance['Medium'] = fuzz.trapmf(CGDistance.universe, [2, 4, 5, 8])
+CGDistance['Far']    = fuzz.trapmf(CGDistance.universe, [6, 9, 10, 10])
+
+PayloadHeight['Low']    = fuzz.trapmf(PayloadHeight.universe, [0, 0, 0, 5])
+PayloadHeight['Medium'] = fuzz.trapmf(PayloadHeight.universe, [4, 10, 10, 16])
+PayloadHeight['High']   = fuzz.trapmf(PayloadHeight.universe, [14, 20, 20, 20])
+
+ControlAdjustment['NoCorrection']   = fuzz.trimf(ControlAdjustment.universe, [0.0, 0.0, 1.0])
+ControlAdjustment['SmallCorrection']= fuzz.trimf(ControlAdjustment.universe, [0.5, 1.0, 1.5])
+ControlAdjustment['StrongCorrection']=fuzz.trimf(ControlAdjustment.universe, [1.0, 2.0, 2.5])
+ControlAdjustment['OverrideStop']   = fuzz.trimf(ControlAdjustment.universe, [2.0, 3.0, 3.0])
+
+OperatorFeedback['Safe']    = fuzz.trimf(OperatorFeedback.universe, [0.0, 0.0, 0.5])
+OperatorFeedback['Caution'] = fuzz.trimf(OperatorFeedback.universe, [0.5, 1.0, 1.5])
+OperatorFeedback['Unsafe']  = fuzz.trimf(OperatorFeedback.universe, [1.5, 2.0, 2.0])
+
+# Rules (from your ruleList)
+rules = []
+rules.append(ctrl.Rule(BoomLength['Short']  & CGDistance['Close']  & PayloadHeight['Low'],
+                      (ControlAdjustment['NoCorrection'], OperatorFeedback['Safe'])))
+rules.append(ctrl.Rule(BoomLength['Medium'] & CGDistance['Medium'] & PayloadHeight['Medium'],
+                      (ControlAdjustment['SmallCorrection'], OperatorFeedback['Caution'])))
+rules.append(ctrl.Rule(BoomLength['Long']   & CGDistance['Far']    & PayloadHeight['High'],
+                      (ControlAdjustment['OverrideStop'], OperatorFeedback['Unsafe'])))
+rules.append(ctrl.Rule(BoomLength['Long']   & CGDistance['Medium'] & PayloadHeight['High'],
+                      (ControlAdjustment['StrongCorrection'], OperatorFeedback['Unsafe'])))
+rules.append(ctrl.Rule(BoomLength['Medium'] & CGDistance['Far']    & PayloadHeight['High'],
+                      (ControlAdjustment['StrongCorrection'], OperatorFeedback['Unsafe'])))
+
+# build control system
+crane_ctrl = ctrl.ControlSystem(rules)
+crane_sim = ctrl.ControlSystemSimulation(crane_ctrl, flush_after_run=30)  # flush periodically for speed
+
+# --- Logging & visualization buffers ---
+angle_history = deque(maxlen=800)  # store recent angle (rad)
+time_history = deque(maxlen=800)
+sim_time = 0.0
+
+def compute_cg():
+    """Compute the center of gravity of the crane system (base, boom, payload)."""
+    bodies = [base_body, boom_body, payload_body]
+    valid_bodies = [b for b in bodies if b.mass > 0 and not np.isinf(b.mass)]
+
+    if not valid_bodies:
+        return base_body.position
+
+    total_mass = sum(b.mass for b in valid_bodies)
+    weighted_sum = sum((b.mass * b.position for b in valid_bodies), start=pymunk.Vec2d(0, 0))
+    cg = weighted_sum / total_mass
+    return cg
+
+
 running = True
 while running:
+    dt = 1.0 / FPS
+    sim_time += dt
+
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
@@ -193,12 +362,13 @@ while running:
         running = False
 
     # ----- Controls -----
+    grav = (boom_mass * 9.81 * (boom_length/2) + payload_mass * 9.81 * boom_length) * math.cos(boom_body.angle)
     rotating = False
     if keys[pygame.K_q]:
-        boom_body.torque += boom_torque_up * math.cos(boom_body.angle) + boom_length * math.cos(boom_body.angle) * (payload_mass + boom_mass)
+        boom_body.torque += boom_torque_up * math.cos(boom_body.angle) + grav + 1000
         rotating = True
     if keys[pygame.K_e]:
-        boom_body.torque -= boom_torque_down * math.cos(boom_body.angle) - boom_length * math.cos(boom_body.angle) * (payload_mass + boom_mass)
+        boom_body.torque -= boom_torque_down * math.cos(boom_body.angle) - grav + 1000
         rotating = True
 
     # hoist
@@ -207,7 +377,7 @@ while running:
         if spring is not None:
             spring.rest_length = hoist_length
     if keys[pygame.K_s]:
-        hoist_length = min(10.0, hoist_length + hoist_speed)
+        hoist_length = min(50.0, hoist_length + hoist_speed)
         if spring is not None:
             spring.rest_length = hoist_length
 
@@ -231,15 +401,65 @@ while running:
         boom_target_angle = boom_body.angle
 
     if not rotating:
-        angle_error = boom_target_angle - boom_body.angle
-        boom_body.torque += k_p * angle_error - k_d * boom_body.angular_velocity
+        error = boom_target_angle - boom_body.angle
+        boom_body.torque += k_p * error - k_d * boom_body.angular_velocity + grav
 
     was_rotating = rotating
 
-    # step physics
-    space.step(1.0 / FPS)
+    # --- Evaluate FIS each frame ---
+    cg_pos = compute_cg()
+    CGD_input = float(abs(cg_pos.x - base_body.position.x))
+    BL_input = float(boom_length) 
+    PH_input = float(hoist_length)
 
-    # rendering
+    # set inputs (clip to universes to avoid skfuzzy warnings)
+    crane_sim.input['BoomLength'] = np.clip(BL_input, u_bl[0], u_bl[-1])
+    crane_sim.input['CGDistance'] = np.clip(CGD_input, u_cgd[0], u_cgd[-1])
+    crane_sim.input['PayloadHeight'] = np.clip(PH_input, u_ph[0], u_ph[-1])
+    try:
+        crane_sim.compute()
+        control_adj = float(crane_sim.output['ControlAdjustment'])
+        feedback_lvl = float(crane_sim.output['OperatorFeedback'])
+    except Exception:
+        # if compute fails for any reason, fallback to safe defaults
+        control_adj = 0.0
+        feedback_lvl = 0.0
+
+    # Map fuzzy control_adj into actual horizontal acceleration for demo:
+    if control_adj < 0.5:
+        x_ddot = 0.0  # No correction
+    elif control_adj < 1.5:
+        # estimate payload angle relative to vertical and do proportional small correction
+        boom_tip_world = boom_body.position + pymunk.Vec2d(boom_length/2.0, 0.0).rotated(boom_body.angle)
+        dx = payload_body.position.x - boom_tip_world.x
+        dy = payload_body.position.y - boom_tip_world.y
+        theta = math.atan2(dx, -dy) if (abs(dx) > 1e-9 or abs(dy) > 1e-9) else 0.0
+        x_ddot = -0.5 * theta
+    elif control_adj < 2.5:
+        boom_tip_world = boom_body.position + pymunk.Vec2d(boom_length/2.0, 0.0).rotated(boom_body.angle)
+        dx = payload_body.position.x - boom_tip_world.x
+        dy = payload_body.position.y - boom_tip_world.y
+        theta = math.atan2(dx, -dy) if (abs(dx) > 1e-9 or abs(dy) > 1e-9) else 0.0
+        x_ddot = -2.0 * theta
+    else:
+        x_ddot = 0.0  # OverrideStop => freeze horizontal correction
+
+    # Apply horizontal force to payload (F = m * x_ddot)
+    force_x = payload_mass * x_ddot
+    payload_body.apply_force_at_local_point((force_x, 0.0), (0.0, 0.0))
+
+    # step physics
+    space.step(dt)
+
+    # compute swing angle for visualization
+    boom_tip_world = boom_body.position + pymunk.Vec2d(boom_length/2.0, 0.0).rotated(boom_body.angle)
+    dx = payload_body.position.x - boom_tip_world.x
+    dy = payload_body.position.y - boom_tip_world.y
+    theta = math.atan2(dx, -dy) if (abs(dx) > 1e-9 or abs(dy) > 1e-9) else 0.0
+    angle_history.append(theta)
+    time_history.append(sim_time)
+
+    # --- Rendering ---
     screen.fill((245, 245, 245))
 
     # draw base rectangle at base_body.position
@@ -258,17 +478,7 @@ while running:
     pygame.draw.line(screen, (40, 40, 40), boom_tip_px, payload_px, 2)
     pygame.draw.circle(screen, (200, 40, 40), payload_px, int(PIXELS_PER_M * payload_radius))
 
-    # overlays
-    font = pygame.font.SysFont("Consolas", 18)
-    lines = [
-        f"boom_angle = {math.degrees(boom_body.angle)%360:.2f} deg",
-        f"boom_length = {boom_length:.2f} m",
-        f"hoist_length = {spring.rest_length:.2f} m",
-        f"payload_pos = ({payload_body.position.x:.2f}, {payload_body.position.y:.2f}) m",
-        "Controls: Q/E rotate, A/D extend/retract, W/S winch, Esc quit"
-    ]
-    for i, l in enumerate(lines):
-        screen.blit(font.render(l, True, (10, 10, 10)), (20, 20 + 22*i))
+    visualizeFis()
 
     pygame.display.flip()
     clock.tick(FPS)
