@@ -171,7 +171,7 @@ def visualizeFis():
     lines = [
         f"BoomLength (BL): {BL_input:.2f} m",
         f"CGDistance (CGD): {CGD_input:.2f} m",
-        f"PayloadHeight (PH): {PH_input:.2f} m (hoist length)"
+        f"PayloadHeight (PH): {PH_input:.2f} m"
     ]
     for l in lines:
         screen.blit(font.render(l, True, (10,10,10)), (label_x, current_y))
@@ -194,14 +194,9 @@ def visualizeFis():
     screen.blit(font.render("OperatorFeedback:", True, (10,10,10)), (ca_x, ca_y))
     ca_y += 20
     pygame.draw.rect(screen, (180,180,180), (ca_x, ca_y, bar_w, bar_h))
-    filled2 = int((feedback_lvl / 2.0) * bar_w)
+    filled2 = int((feedback_lvl / 3.0) * bar_w)
     pygame.draw.rect(screen, (220, 110, 80), (ca_x, ca_y, filled2, bar_h))
     screen.blit(font.render(f"{feedback_lvl:.3f} / 2.0", True, (10,10,10)), (ca_x + bar_w + 6, ca_y))
-
-    ca_y += 36
-    screen.blit(font.render("Applied horizontal force (N):", True, (10,10,10)), (ca_x, ca_y))
-    ca_y += 18
-    screen.blit(font.render(f"{force_x:.3f} N (payload_mass * x_ddot)", True, (10,10,10)), (ca_x, ca_y))
 
     # small swing angle plot at bottom of panel
     plot_h = 160
@@ -263,7 +258,7 @@ payload_body.damping = 0.995
 
 # --- user control params ---
 boom_torque_up = 20000
-boom_torque_down = 0
+boom_torque_down = 7000
 hoist_speed = 0.03       # m per frame
 extend_speed = 0.03      # m per frame
 boom_min_len = 3.0
@@ -275,11 +270,10 @@ was_rotating = False
 k_p = 750000.0
 k_d = 200000.0
 
-# --- FIS using scikit-fuzzy (translated from your MATLAB mamfis) ---
-# Create Antecedents / Consequents
-u_bl = np.arange(0, boom_max_len, 1)  
-u_cgd = np.arange(0, 20, 0.1)  
-u_ph = np.arange(0, boom_max_len, 1) 
+# --- FIS using scikit-fuzzy ---
+u_bl = np.arange(0, 120, 1)
+u_cgd = np.arange(0, 40, 0.1)
+u_ph = np.arange(-20, 40, 0.5)
 
 BoomLength = ctrl.Antecedent(u_bl, 'BoomLength')
 CGDistance = ctrl.Antecedent(u_cgd, 'CGDistance')
@@ -295,42 +289,69 @@ BoomLength['Short']  = fuzz.trapmf(BoomLength.universe, [0, 5, 15, 20])
 BoomLength['Medium'] = fuzz.trapmf(BoomLength.universe, [15, 20, 30, 50])
 BoomLength['Long']   = fuzz.trapmf(BoomLength.universe, [40, 60, 100, 100])
 
-CGDistance['Close']  = fuzz.trapmf(CGDistance.universe, [0, 0, 0, 3])
-CGDistance['Medium'] = fuzz.trapmf(CGDistance.universe, [2, 4, 5, 8])
-CGDistance['Far']    = fuzz.trapmf(CGDistance.universe, [6, 9, 10, 10])
+CGDistance['Close']  = fuzz.trapmf(CGDistance.universe, [0, 2, 7, 10])
+CGDistance['Medium'] = fuzz.trapmf(CGDistance.universe, [5, 9, 15, 20])
+CGDistance['Far']    = fuzz.trapmf(CGDistance.universe, [15, 20, 35, 40])
 
 PayloadHeight['Low']    = fuzz.trapmf(PayloadHeight.universe, [0, 0, 0, 5])
-PayloadHeight['Medium'] = fuzz.trapmf(PayloadHeight.universe, [4, 10, 10, 16])
-PayloadHeight['High']   = fuzz.trapmf(PayloadHeight.universe, [14, 20, 20, 20])
+PayloadHeight['Medium'] = fuzz.trapmf(PayloadHeight.universe, [4, 10, 15, 20])
+PayloadHeight['High']   = fuzz.trapmf(PayloadHeight.universe, [12, 20, 25, 30])
 
 ControlAdjustment['NoCorrection']   = fuzz.trimf(ControlAdjustment.universe, [0.0, 0.0, 1.0])
 ControlAdjustment['SmallCorrection']= fuzz.trimf(ControlAdjustment.universe, [0.5, 1.0, 1.5])
 ControlAdjustment['StrongCorrection']=fuzz.trimf(ControlAdjustment.universe, [1.0, 2.0, 2.5])
 ControlAdjustment['OverrideStop']   = fuzz.trimf(ControlAdjustment.universe, [2.0, 3.0, 3.0])
 
-OperatorFeedback['Safe']    = fuzz.trimf(OperatorFeedback.universe, [0.0, 0.0, 0.5])
+OperatorFeedback['Safe']    = fuzz.trimf(OperatorFeedback.universe, [0.0, 0.0, 1.0])
 OperatorFeedback['Caution'] = fuzz.trimf(OperatorFeedback.universe, [0.5, 1.0, 1.5])
-OperatorFeedback['Unsafe']  = fuzz.trimf(OperatorFeedback.universe, [1.5, 2.0, 2.0])
+OperatorFeedback['Unsafe']  = fuzz.trimf(OperatorFeedback.universe, [1.0, 2.0, 2.5])
+OperatorFeedback['Danger']  = fuzz.trimf(OperatorFeedback.universe, [2.0, 3.0, 3.0])
 
-# Rules (from your ruleList)
+# Rules
 rules = []
-rules.append(ctrl.Rule(BoomLength['Short']  & CGDistance['Close']  & PayloadHeight['Low'],
+rules.append(ctrl.Rule(BoomLength['Long'] & CGDistance['Far'],
+                      (ControlAdjustment['OverrideStop'], OperatorFeedback['Danger'])))
+rules.append(ctrl.Rule(CGDistance['Close'],
+                      (ControlAdjustment['NoCorrection'], OperatorFeedback['Safe'])))
+
+rules.append(ctrl.Rule(BoomLength['Short'] & CGDistance['Medium'] & PayloadHeight['Low'],
+                      (ControlAdjustment['NoCorrection'], OperatorFeedback['Safe'])))
+rules.append(ctrl.Rule(BoomLength['Medium'] & CGDistance['Medium'] & PayloadHeight['Low'],
+                      (ControlAdjustment['SmallCorrection'], OperatorFeedback['Caution'])))
+rules.append(ctrl.Rule(BoomLength['Long'] & CGDistance['Medium'] & PayloadHeight['Low'],
+                      (ControlAdjustment['SmallCorrection'], OperatorFeedback['Caution'])))
+rules.append(ctrl.Rule(BoomLength['Short'] & CGDistance['Medium'] & PayloadHeight['Medium'],
                       (ControlAdjustment['NoCorrection'], OperatorFeedback['Safe'])))
 rules.append(ctrl.Rule(BoomLength['Medium'] & CGDistance['Medium'] & PayloadHeight['Medium'],
                       (ControlAdjustment['SmallCorrection'], OperatorFeedback['Caution'])))
-rules.append(ctrl.Rule(BoomLength['Long']   & CGDistance['Far']    & PayloadHeight['High'],
-                      (ControlAdjustment['OverrideStop'], OperatorFeedback['Unsafe'])))
-rules.append(ctrl.Rule(BoomLength['Long']   & CGDistance['Medium'] & PayloadHeight['High'],
-                      (ControlAdjustment['StrongCorrection'], OperatorFeedback['Unsafe'])))
-rules.append(ctrl.Rule(BoomLength['Medium'] & CGDistance['Far']    & PayloadHeight['High'],
+rules.append(ctrl.Rule(BoomLength['Long'] & CGDistance['Medium'] & PayloadHeight['Medium'],
+                      (ControlAdjustment['SmallCorrection'], OperatorFeedback['Caution'])))
+rules.append(ctrl.Rule(BoomLength['Short'] & CGDistance['Medium'] & PayloadHeight['High'],
+                      (ControlAdjustment['NoCorrection'], OperatorFeedback['Safe'])))
+rules.append(ctrl.Rule(BoomLength['Medium'] & CGDistance['Medium'] & PayloadHeight['High'],
+                      (ControlAdjustment['SmallCorrection'], OperatorFeedback['Caution'])))
+rules.append(ctrl.Rule(BoomLength['Long'] & CGDistance['Medium'] & PayloadHeight['High'],
                       (ControlAdjustment['StrongCorrection'], OperatorFeedback['Unsafe'])))
 
-# build control system
+rules.append(ctrl.Rule(BoomLength['Short'] & CGDistance['Far'] & PayloadHeight['Low'],
+                      (ControlAdjustment['SmallCorrection'], OperatorFeedback['Caution'])))
+rules.append(ctrl.Rule(BoomLength['Medium'] & CGDistance['Far'] & PayloadHeight['Low'],
+                      (ControlAdjustment['StrongCorrection'], OperatorFeedback['Unsafe'])))
+rules.append(ctrl.Rule(BoomLength['Short'] & CGDistance['Far'] & PayloadHeight['Medium'],
+                      (ControlAdjustment['SmallCorrection'], OperatorFeedback['Caution'])))
+rules.append(ctrl.Rule(BoomLength['Medium'] & CGDistance['Far'] & PayloadHeight['Medium'],
+                      (ControlAdjustment['StrongCorrection'], OperatorFeedback['Unsafe'])))
+rules.append(ctrl.Rule(BoomLength['Short'] & CGDistance['Far'] & PayloadHeight['High'],
+                      (ControlAdjustment['StrongCorrection'], OperatorFeedback['Unsafe'])))
+rules.append(ctrl.Rule(BoomLength['Medium'] & CGDistance['Far'] & PayloadHeight['High'],
+                      (ControlAdjustment['StrongCorrection'], OperatorFeedback['Danger'])))
+
+
 crane_ctrl = ctrl.ControlSystem(rules)
 crane_sim = ctrl.ControlSystemSimulation(crane_ctrl, flush_after_run=30)  # flush periodically for speed
 
 # --- Logging & visualization buffers ---
-angle_history = deque(maxlen=800)  # store recent angle (rad)
+angle_history = deque(maxlen=800)  
 time_history = deque(maxlen=800)
 sim_time = 0.0
 
@@ -410,7 +431,7 @@ while running:
     cg_pos = compute_cg()
     CGD_input = float(abs(cg_pos.x - base_body.position.x))
     BL_input = float(boom_length) 
-    PH_input = float(hoist_length)
+    PH_input = float((math.sin(boom_body.angle) * (boom_length)) - hoist_length)
 
     # set inputs (clip to universes to avoid skfuzzy warnings)
     crane_sim.input['BoomLength'] = np.clip(BL_input, u_bl[0], u_bl[-1])
@@ -424,29 +445,6 @@ while running:
         # if compute fails for any reason, fallback to safe defaults
         control_adj = 0.0
         feedback_lvl = 0.0
-
-    # Map fuzzy control_adj into actual horizontal acceleration for demo:
-    if control_adj < 0.5:
-        x_ddot = 0.0  # No correction
-    elif control_adj < 1.5:
-        # estimate payload angle relative to vertical and do proportional small correction
-        boom_tip_world = boom_body.position + pymunk.Vec2d(boom_length/2.0, 0.0).rotated(boom_body.angle)
-        dx = payload_body.position.x - boom_tip_world.x
-        dy = payload_body.position.y - boom_tip_world.y
-        theta = math.atan2(dx, -dy) if (abs(dx) > 1e-9 or abs(dy) > 1e-9) else 0.0
-        x_ddot = -0.5 * theta
-    elif control_adj < 2.5:
-        boom_tip_world = boom_body.position + pymunk.Vec2d(boom_length/2.0, 0.0).rotated(boom_body.angle)
-        dx = payload_body.position.x - boom_tip_world.x
-        dy = payload_body.position.y - boom_tip_world.y
-        theta = math.atan2(dx, -dy) if (abs(dx) > 1e-9 or abs(dy) > 1e-9) else 0.0
-        x_ddot = -2.0 * theta
-    else:
-        x_ddot = 0.0  # OverrideStop => freeze horizontal correction
-
-    # Apply horizontal force to payload (F = m * x_ddot)
-    force_x = payload_mass * x_ddot
-    payload_body.apply_force_at_local_point((force_x, 0.0), (0.0, 0.0))
 
     # step physics
     space.step(dt)
