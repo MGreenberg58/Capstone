@@ -13,7 +13,7 @@ WIDTH, HEIGHT = 1280, 800
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Crane")
 clock = pygame.time.Clock()
-FPS = 240
+FPS = 120
 
 PIXELS_PER_M = 6.0   # zoomed-out scale (you can change)
 BASE_X, BASE_Y = 100, HEIGHT - 100
@@ -24,7 +24,7 @@ def to_pygame(pos):
 
 space = pymunk.Space()
 space.gravity = (0.0, -9.81)
-space.iterations = 100
+space.iterations = 50
 
 crane = Crane(space)
 fis = CraneFIS()
@@ -125,17 +125,10 @@ while running:
         crane.boom_springs[-1].rest_length = crane.hoist_length
 
     # Boom extend
-    length_changed = False
     if keys[pygame.K_d]:
-        new_len = min(boom_max_len, crane.boom_length + extend_speed)
-        if new_len != crane.boom_length:
-            crane.create_boom(new_len)
-            length_changed = True
+        crane.telescope(direction=+1, speed=extend_speed)
     if keys[pygame.K_a]:
-        new_len = max(boom_min_len, crane.boom_length - extend_speed)
-        if new_len != crane.boom_length:
-            crane.create_boom(new_len)
-            length_changed = True
+        crane.telescope(direction=-1, speed=extend_speed)
 
     if was_rotating and not rotating:
         boom_target_angle = crane.boom_bodies[0].angle
@@ -173,12 +166,17 @@ while running:
 
     # boom
     prev_px = to_pygame(crane.base_pos) 
-    for body, length in zip(crane.boom_bodies, crane.boom_sections):
-        start_world = body.position + pymunk.Vec2d(-length/2, 0).rotated(body.angle)
-        end_world   = body.position + pymunk.Vec2d(length/2, 0).rotated(body.angle)
-        start_px = to_pygame(start_world)
-        end_px   = to_pygame(end_world)
-        pygame.draw.line(screen, (240,200,0), start_px, end_px, max(4, int(PIXELS_PER_M * 0.8)))
+    for shape in crane.boom_shapes:
+        body = shape.body
+        p1 = body.position + shape.a.rotated(body.angle)
+        p2 = body.position + shape.b.rotated(body.angle)
+
+        # Convert to pixel coordinates
+        boom_start_px = to_pygame(p1)
+        boom_tip_px   = to_pygame(p2)
+
+        color = getattr(shape, "color", (240, 200, 0, 255))[:3]  # fallback to yellow
+        pygame.draw.line(screen, color, boom_start_px, boom_tip_px, int(max(1, crane.boom_thickness * PIXELS_PER_M)))
 
     # cable and payload
     boom_tip_px = to_pygame(crane.boom_tip_world())

@@ -76,12 +76,6 @@ class CraneFIS:
         self.ctrlsys = ctrl.ControlSystem(rules)
 
     def evaluate(self, bl, cgd, ph):
-        """Evaluate FIS with clipping and robust fallback.
-           bl: boom length (m)
-           cgd: cg distance (m)
-           ph: payload height (m) (positive downward in your sim or relative measure)
-           returns (control_adj, operator_feedback) as floats
-        """
         # clip into universe ranges
         bl_v = float(np.clip(bl, self.u_bl[0], self.u_bl[-1]))
         cgd_v = float(np.clip(cgd, self.u_cgd[0], self.u_cgd[-1]))
