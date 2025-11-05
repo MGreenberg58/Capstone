@@ -40,7 +40,7 @@ class Crane:
             body = pymunk.Body(mass, moment)
             body.position = pymunk.Vec2d(total_x + length/2, self.base_pos.y)
             shape = pymunk.Segment(body, (-length/2,0), (length/2,0), self.boom_thickness)
-            shape.color = (240, 200, 0, 255)
+            shape.color = (240, i * 100, 0, 255)
             shape.filter = pymunk.ShapeFilter(group=1)  # prevent collisions between boom sections
             self.space.add(body, shape)
 
@@ -65,8 +65,8 @@ class Crane:
                                             (prev_length/2,0),
                                             (-length/2,0),
                                             rest_length=0.0,
-                                            stiffness=20000,
-                                            damping=800)
+                                            stiffness=100000,
+                                            damping=500)
                 self.space.add(spring)
                 self.boom_springs.append(spring)
 
@@ -83,20 +83,50 @@ class Crane:
         moment = pymunk.moment_for_circle(self.payload_mass, 0, self.payload_radius)
         self.payload_body = pymunk.Body(self.payload_mass, moment)
         tip_pos = self.boom_tip_body.position
-        self.payload_body.position = tip_pos + (0, -self.hoist_length)
+        self.payload_body.position = tip_pos + (tip_pos[0] / 2, -self.hoist_length)
         self.payload_shape = pymunk.Circle(self.payload_body, self.payload_radius)
         self.payload_shape.color = (200, 40, 40, 255)
         self.space.add(self.payload_body, self.payload_shape)
 
-        # Rope-like spring from last boom section to payload
-        rope = pymunk.DampedSpring(self.boom_tip_body, self.payload_body,
-                                   (self.boom_sections[-1]/2,0),
-                                   (0,0),
-                                   rest_length=self.hoist_length,
-                                   stiffness=100000,
-                                   damping=10)
+        rope = pymunk.DampedSpring(
+            self.boom_tip_body,
+            self.payload_body,
+            (tip_pos[0] / 2, 0),                   # attach at center of boom tip
+            (0, 0),                   # attach at center of payload
+            rest_length=self.hoist_length,
+            stiffness=5000,           # moderate stiffness
+            damping=50                # some damping to prevent oscillation
+        )
         self.space.add(rope)
-        self.boom_springs.append(rope)
+        self.payload_rope = rope  # keep reference if needed
+
+
+    def telescope(self, direction, speed=0.02, impulse_scale=200.0, max_impulse=200.0):
+        for i in range(1, len(self.boom_bodies)):
+            parent = self.boom_bodies[i - 1]
+            child = self.boom_bodies[i]
+
+            # Parent's +x axis in world coords (unit vector)
+            boom_axis = parent.rotation_vector  # Vec2d(cos, sin)
+
+            # Small impulse along the axis (world point at child's center)
+            impulse = boom_axis * (direction * impulse_scale)
+            # clamp impulse magnitude
+            if impulse.length > max_impulse:
+                impulse = impulse.normalized() * max_impulse
+
+            # apply safe impulses (world point)
+            child.apply_impulse_at_world_point(impulse, child.position)
+            parent.apply_impulse_at_world_point(-impulse, parent.position)
+
+            # gently modify internal spring rest length (so springs help extension)
+            si = i - 1
+            if si < len(self.boom_springs):
+                spring = self.boom_springs[si]
+                # change rest length slowly and clamp
+                new_rest = max(0.02, spring.rest_length + direction * speed)
+                new_rest = min(new_rest, self.boom_sections[si])
+                spring.rest_length = new_rest
 
     def compute_cg(self):
         bodies = self.boom_bodies + [self.payload_body]

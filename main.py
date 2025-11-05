@@ -113,7 +113,7 @@ while running:
         crane.boom_bodies[0].torque += boom_torque_up * abs(math.cos(crane.boom_bodies[0].angle)) + crane.gravity_moment()
         rotating = True
     if keys[pygame.K_e]:
-        crane.boom_bodies[0].torque -= boom_torque_down * abs(math.cos(crane.boom_bodies[0].angle)) + crane.gravity_moment()
+        crane.boom_bodies[0].torque -= boom_torque_down * abs(math.cos(crane.boom_bodies[0].angle)) - crane.gravity_moment()
         rotating = True
 
     # Hoist
@@ -127,15 +127,11 @@ while running:
     # Boom extend
     length_changed = False
     if keys[pygame.K_d]:
-        new_len = min(boom_max_len, crane.boom_length + extend_speed)
-        if new_len != crane.boom_length:
-            crane.create_boom(new_len)
-            length_changed = True
+        new_len = min(boom_max_len, crane.boom_length() + extend_speed)
+        crane.telescope(1)
     if keys[pygame.K_a]:
-        new_len = max(boom_min_len, crane.boom_length - extend_speed)
-        if new_len != crane.boom_length:
-            crane.create_boom(new_len)
-            length_changed = True
+        new_len = max(boom_min_len, crane.boom_length() - extend_speed)
+        crane.telescope(-1)
 
     if was_rotating and not rotating:
         boom_target_angle = crane.boom_bodies[0].angle
