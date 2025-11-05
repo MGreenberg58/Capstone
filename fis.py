@@ -4,12 +4,12 @@ from skfuzzy import control as ctrl
 
 class CraneFIS:
     def __init__(self):
-        self.u_bl = np.arange(0, 121, 1)       # boom length 0..120 m
-        self.u_cgd = np.arange(0, 41, 0.1)    # CG distance 0..40 m
-        self.u_ph = np.arange(-30, 61, 0.5)   # payload height (can be negative if above pivot), wide range
+        self.u_bl = np.arange(0, 121, 1) # Boom length 0..120 m
+        self.u_cgd = np.arange(0, 41, 0.1) # CG distance 0..40 m
+        self.u_ph = np.arange(-30, 61, 0.5) # Payload height -30..60m
 
-        self.u_ctrl = np.arange(0, 3.01, 0.01)  # ControlAdjustment 0..3
-        self.u_feed = np.arange(0, 3.01, 0.01)  # OperatorFeedback 0..3 (expanded for 'Danger')
+        self.u_ctrl = np.arange(0, 3.01, 0.01) # ControlAdjustment 0..3
+        self.u_feed = np.arange(0, 3.01, 0.01) # OperatorFeedback 0..3 
 
         # Antecedents / Consequents
         self.BoomLength = ctrl.Antecedent(self.u_bl, 'BoomLength')
@@ -24,22 +24,18 @@ class CraneFIS:
         self.sim = ctrl.ControlSystemSimulation(self.ctrlsys, flush_after_run=30)
 
     def _build_mfs(self):
-        # Boom Length MFs
         self.BoomLength['Short']  = fuzz.trapmf(self.BoomLength.universe, [0, 0, 10, 25])
         self.BoomLength['Medium'] = fuzz.trapmf(self.BoomLength.universe, [15, 30, 50, 70])
         self.BoomLength['Long']   = fuzz.trapmf(self.BoomLength.universe, [60, 80, 120, 120])
 
-        # CGDistance MFs (tuned)
         self.CGDistance['Close']  = fuzz.trapmf(self.CGDistance.universe, [0, 0, 2, 6])
         self.CGDistance['Medium'] = fuzz.trapmf(self.CGDistance.universe, [4, 8, 12, 18])
         self.CGDistance['Far']    = fuzz.trapmf(self.CGDistance.universe, [14, 20, 40, 40])
 
-        # Payload Height (relative) MFs
         self.PayloadHeight['Low']    = fuzz.trapmf(self.PayloadHeight.universe, [-30, -30, -5, 0])
         self.PayloadHeight['Medium'] = fuzz.trapmf(self.PayloadHeight.universe, [-2, 2, 8, 15])
         self.PayloadHeight['High']   = fuzz.trapmf(self.PayloadHeight.universe, [10, 20, 60, 60])
 
-        # Outputs
         self.ControlAdjustment['NoCorrection']    = fuzz.trimf(self.ControlAdjustment.universe, [0.0, 0.0, 1.0])
         self.ControlAdjustment['SmallCorrection'] = fuzz.trimf(self.ControlAdjustment.universe, [0.5, 1.0, 1.5])
         self.ControlAdjustment['StrongCorrection']= fuzz.trimf(self.ControlAdjustment.universe, [1.2, 2.0, 2.5])
@@ -76,13 +72,6 @@ class CraneFIS:
         self.ctrlsys = ctrl.ControlSystem(rules)
 
     def evaluate(self, bl, cgd, ph):
-        """Evaluate FIS with clipping and robust fallback.
-           bl: boom length (m)
-           cgd: cg distance (m)
-           ph: payload height (m) (positive downward in your sim or relative measure)
-           returns (control_adj, operator_feedback) as floats
-        """
-        # clip into universe ranges
         bl_v = float(np.clip(bl, self.u_bl[0], self.u_bl[-1]))
         cgd_v = float(np.clip(cgd, self.u_cgd[0], self.u_cgd[-1]))
         ph_v = float(np.clip(ph, self.u_ph[0], self.u_ph[-1]))
@@ -94,10 +83,10 @@ class CraneFIS:
             self.sim.compute()
             ca = float(self.sim.output.get('ControlAdjustment', 0.0))
             ofb = float(self.sim.output.get('OperatorFeedback', 0.0))
-            # If NaN somehow appears, fallback
+
             if np.isnan(ca) or np.isnan(ofb):
                 return 0.0, 0.0
             return ca, ofb
+        
         except Exception:
-            # fallback defaults (safe)
             return 0.0, 0.0
