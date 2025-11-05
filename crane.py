@@ -34,16 +34,13 @@ class Crane:
         prev_length = None
         total_x = self.base_pos.x
 
-       
-
         for i, length in enumerate(self.boom_sections):
             mass = self.boom_masses[i]
             moment = pymunk.moment_for_segment(mass, (-length/2,0), (length/2,0), self.boom_thickness)
             body = pymunk.Body(mass, moment)
             body.position = pymunk.Vec2d(total_x + length/2, self.base_pos.y)
             shape = pymunk.Segment(body, (-length/2,0), (length/2,0), self.boom_thickness)
-            shade = 200 - i * 30
-            shape.color = (200, shade, 0, 255)
+            shape.color = (255 - i * 50, i * 50, 0, 255)
             shape.filter = pymunk.ShapeFilter(group=1)  # prevent collisions between boom sections
             self.space.add(body, shape)
 
@@ -51,25 +48,22 @@ class Crane:
                 joint = pymunk.PinJoint(body, pivot, (-length/2,0), (0,0))
                 self.space.add(joint)
             else:
-                # Keep sections aligned
-                rot_limit = pymunk.RotaryLimitJoint(prev_body, body, 0, 0)
+                rot_limit = pymunk.RotaryLimitJoint(prev_body, body, -0.01, 0.01)
                 self.space.add(rot_limit)
                 self.boom_joints.append(rot_limit)
 
-                # Allow sliding along previous section
                 groove = pymunk.GrooveJoint(prev_body, body,
                                             (-prev_length/2,0), (prev_length/2,0),
                                             (-length/2,0))
                 self.space.add(groove)
                 self.boom_joints.append(groove)
 
-                # Add spring for stiffness
                 spring = pymunk.DampedSpring(prev_body, body,
                                             (prev_length/2,0),
                                             (-length/2,0),
                                             rest_length=0.0,
-                                            stiffness=20000,
-                                            damping=800)
+                                            stiffness=10000,
+                                            damping=1000)
                 self.space.add(spring)
                 self.boom_springs.append(spring)
 
@@ -82,80 +76,33 @@ class Crane:
         self.boom_tip_body = self.boom_bodies[-1]
         self.total_boom_length = sum(self.boom_sections)
 
-    # def _create_payload_rope(self):
-    #     moment = pymunk.moment_for_circle(self.payload_mass, 0, self.payload_radius)
-    #     self.payload_body = pymunk.Body(self.payload_mass, moment)
-    #     tip_pos = self.boom_tip_body.position
-    #     self.payload_body.position = tip_pos + (0, -self.hoist_length)
-    #     self.payload_shape = pymunk.Circle(self.payload_body, self.payload_radius)
-    #     self.payload_shape.color = (200, 40, 40, 255)
-    #     self.space.add(self.payload_body, self.payload_shape)
-    #   
-    #     rope = pymunk.DampedSpring(self.boom_tip_body, self.payload_body,
-    #                                (self.boom_sections[-1]/2,0),
-    #                                (0,0),
-    #                                rest_length=self.hoist_length,
-    #                                stiffness=100000,
-    #                                damping=10)
-    #     self.space.add(rope)
-    #     self.boom_springs.append(rope)
-
-
     def _create_payload_rope(self):
-        # Create payload body
         moment = pymunk.moment_for_circle(self.payload_mass, 0, self.payload_radius)
         self.payload_body = pymunk.Body(self.payload_mass, moment)
-        tip_pos = self.boom_tip_body.position
-        self.payload_body.position = tip_pos + (0, -self.hoist_length)
+
+        tip_body = self.boom_tip_body
+        tip_length = self.boom_sections[-1]
+
+        tip_anchor = (tip_length / 2, 0)
+        tip_world = tip_body.local_to_world(tip_anchor)
+        self.payload_body.position = tip_world + pymunk.Vec2d(0, -self.hoist_length)
         self.payload_shape = pymunk.Circle(self.payload_body, self.payload_radius)
+        self.payload_shape.filter = pymunk.ShapeFilter(group=1)
         self.payload_shape.color = (200, 40, 40, 255)
         self.space.add(self.payload_body, self.payload_shape)
 
-        # PinJoint locks endpoints together
-        pin = pymunk.PinJoint(
-            self.boom_tip_body,
-            self.payload_body,
-            (self.boom_sections[-1] / 2, 0),
-            (0, 0)
-        )
-        pin.distance = self.hoist_length  # fixed cable length
-        self.space.add(pin)
+        pin = pymunk.PinJoint(tip_body, self.payload_body, tip_anchor, (0, 0))
+        slide = pymunk.SlideJoint(tip_body, self.payload_body, tip_anchor, (0, 0), self.hoist_length, self.hoist_length)
+        # spring = pymunk.DampedSpring(tip_body, self.payload_body, tip_anchor, (0, 0), rest_length=self.hoist_length, stiffness=2000, damping=200)
 
-        slack = 0.05  
-        slide = pymunk.SlideJoint(
-            self.boom_tip_body,
-            self.payload_body,
-            (self.boom_sections[-1] / 2, 0),
-            (0, 0),
-            self.hoist_length - slack,
-            self.hoist_length + slack
-        )
-        self.space.add(slide)
+        self.space.add(pin, slide) 
+        self.payload_rope = (pin, slide)
 
-        # Keep reference for hoist control (if needed)
-        self.cable_joint = pin
-        self.boom_springs.append(slide)
-
-
-    def telescope(self, direction, speed=0.05):
-        for i in range(1, len(self.boom_bodies)):
-            parent = self.boom_bodies[i - 1]
-            child = self.boom_bodies[i]
-
-            # Local +x axis of parent in world coordinates
-            boom_axis = parent.rotation_vector  # pymunk.Vec2d(cos(angle), sin(angle))
-
-            # Move child along this axis
-            move_delta = boom_axis * (direction * speed)
-
-            child.position += move_delta
-
-            # Also adjust spring rest length slightly to help stability
-            if i - 1 < len(self.boom_springs):
-                spring = self.boom_springs[i - 1]
-                new_rest = max(0.0, spring.rest_length + direction * speed)
-                spring.rest_length = new_rest
-
+    def telescope(self, direction):
+        for i, spring in enumerate(self.boom_springs):
+            new_rest = max(self.boom_sections[i+1]/8, spring.rest_length + direction)
+            new_rest = min(new_rest, self.boom_sections[i+1] * 7/8)
+            spring.rest_length = new_rest
 
     def compute_cg(self):
         bodies = self.boom_bodies + [self.payload_body]
@@ -184,11 +131,10 @@ class Crane:
     def boom_length(self):
         if not self.boom_bodies:
             return 0.0
-        # Distance between base and last boom tip
+
         base_pos = self.base_pos
         tip_pos = self.boom_tip_body.position
         return (tip_pos - base_pos).length
-
 
     def boom_tip_world(self):
         return self.boom_tip_body.position
