@@ -11,7 +11,6 @@ class CraneFIS:
         self.u_ctrl = np.arange(0, 3.01, 0.01) # ControlAdjustment 0..3
         self.u_feed = np.arange(0, 3.01, 0.01) # OperatorFeedback 0..3 
 
-        # Antecedents / Consequents
         self.BoomLength = ctrl.Antecedent(self.u_bl, 'BoomLength')
         self.CGDistance = ctrl.Antecedent(self.u_cgd, 'CGDistance')
         self.PayloadHeight = ctrl.Antecedent(self.u_ph, 'PayloadHeight')
@@ -48,26 +47,42 @@ class CraneFIS:
 
     def _build_rules(self):
         rules = []
-        # simple, overlapping rules to produce continuous outputs across envelope
-        rules.append(ctrl.Rule(self.BoomLength['Long'] & self.CGDistance['Far'], 
-                               (self.ControlAdjustment['OverrideStop'], self.OperatorFeedback['Danger'])))
-        rules.append(ctrl.Rule(self.CGDistance['Close'], 
-                               (self.ControlAdjustment['NoCorrection'], self.OperatorFeedback['Safe'])))
+        rules.append(ctrl.Rule(self.BoomLength['Long'] & self.CGDistance['Far'],
+                            (self.ControlAdjustment['OverrideStop'], self.OperatorFeedback['Danger'])))
+        rules.append(ctrl.Rule(self.CGDistance['Close'],
+                            (self.ControlAdjustment['NoCorrection'], self.OperatorFeedback['Safe'])))
 
+        rules.append(ctrl.Rule(self.BoomLength['Short'] & self.CGDistance['Medium'] & self.PayloadHeight['Low'],
+                            (self.ControlAdjustment['NoCorrection'], self.OperatorFeedback['Safe'])))
+        rules.append(ctrl.Rule(self.BoomLength['Medium'] & self.CGDistance['Medium'] & self.PayloadHeight['Low'],
+                            (self.ControlAdjustment['SmallCorrection'], self.OperatorFeedback['Caution'])))
+        rules.append(ctrl.Rule(self.BoomLength['Long'] & self.CGDistance['Medium'] & self.PayloadHeight['Low'],
+                            (self.ControlAdjustment['SmallCorrection'], self.OperatorFeedback['Caution'])))
+        rules.append(ctrl.Rule(self.BoomLength['Short'] & self.CGDistance['Medium'] & self.PayloadHeight['Medium'],
+                            (self.ControlAdjustment['NoCorrection'], self.OperatorFeedback['Safe'])))
         rules.append(ctrl.Rule(self.BoomLength['Medium'] & self.CGDistance['Medium'] & self.PayloadHeight['Medium'],
-                               (self.ControlAdjustment['SmallCorrection'], self.OperatorFeedback['Caution'])))
-
-        # Far CG rules (progressively more severe with PH)
-        rules.append(ctrl.Rule(self.CGDistance['Far'] & self.PayloadHeight['Low'],
-                               (self.ControlAdjustment['SmallCorrection'], self.OperatorFeedback['Caution'])))
-        rules.append(ctrl.Rule(self.CGDistance['Far'] & self.PayloadHeight['Medium'],
-                               (self.ControlAdjustment['StrongCorrection'], self.OperatorFeedback['Unsafe'])))
-        rules.append(ctrl.Rule(self.CGDistance['Far'] & self.PayloadHeight['High'],
-                               (self.ControlAdjustment['StrongCorrection'], self.OperatorFeedback['Danger'])))
-
-        # Medium CG with longer boom
+                            (self.ControlAdjustment['SmallCorrection'], self.OperatorFeedback['Caution'])))
+        rules.append(ctrl.Rule(self.BoomLength['Long'] & self.CGDistance['Medium'] & self.PayloadHeight['Medium'],
+                            (self.ControlAdjustment['SmallCorrection'], self.OperatorFeedback['Caution'])))
+        rules.append(ctrl.Rule(self.BoomLength['Short'] & self.CGDistance['Medium'] & self.PayloadHeight['High'],
+                            (self.ControlAdjustment['NoCorrection'], self.OperatorFeedback['Safe'])))
+        rules.append(ctrl.Rule(self.BoomLength['Medium'] & self.CGDistance['Medium'] & self.PayloadHeight['High'],
+                            (self.ControlAdjustment['SmallCorrection'], self.OperatorFeedback['Caution'])))
         rules.append(ctrl.Rule(self.BoomLength['Long'] & self.CGDistance['Medium'] & self.PayloadHeight['High'],
-                               (self.ControlAdjustment['StrongCorrection'], self.OperatorFeedback['Unsafe'])))
+                            (self.ControlAdjustment['StrongCorrection'], self.OperatorFeedback['Unsafe'])))
+
+        rules.append(ctrl.Rule(self.BoomLength['Short'] & self.CGDistance['Far'] & self.PayloadHeight['Low'],
+                            (self.ControlAdjustment['SmallCorrection'], self.OperatorFeedback['Caution'])))
+        rules.append(ctrl.Rule(self.BoomLength['Medium'] & self.CGDistance['Far'] & self.PayloadHeight['Low'],
+                            (self.ControlAdjustment['StrongCorrection'], self.OperatorFeedback['Unsafe'])))
+        rules.append(ctrl.Rule(self.BoomLength['Short'] & self.CGDistance['Far'] & self.PayloadHeight['Medium'],
+                            (self.ControlAdjustment['SmallCorrection'], self.OperatorFeedback['Caution'])))
+        rules.append(ctrl.Rule(self.BoomLength['Medium'] & self.CGDistance['Far'] & self.PayloadHeight['Medium'],
+                            (self.ControlAdjustment['StrongCorrection'], self.OperatorFeedback['Unsafe'])))
+        rules.append(ctrl.Rule(self.BoomLength['Short'] & self.CGDistance['Far'] & self.PayloadHeight['High'],
+                            (self.ControlAdjustment['StrongCorrection'], self.OperatorFeedback['Unsafe'])))
+        rules.append(ctrl.Rule(self.BoomLength['Medium'] & self.CGDistance['Far'] & self.PayloadHeight['High'],
+                            (self.ControlAdjustment['StrongCorrection'], self.OperatorFeedback['Danger'])))
 
         self.ctrlsys = ctrl.ControlSystem(rules)
 
