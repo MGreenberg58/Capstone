@@ -3,7 +3,7 @@ import pymunk
 import math
 
 class Crane:
-    def __init__(self, space, base_pos=(0.0, 0.0), boom_sections=(10.0, 7.0, 5.0), boom_masses=(25, 10, 5), payload_mass=50.0, payload_radius=1.0, hoist_length=15.0):
+    def __init__(self, space, base_pos=(0.0, 0.0), boom_sections=(40.0, 25.0, 15.0), boom_masses=(6000, 2500, 500), payload_mass=500.0, payload_radius=1.0, hoist_length=15.0):
         self.space = space
         self.base_pos = pymunk.Vec2d(base_pos[0], base_pos[1])
         self.boom_sections = list(boom_sections)
@@ -34,13 +34,16 @@ class Crane:
         prev_length = None
         total_x = self.base_pos.x
 
+        colors = [(237, 86, 86, 255), (86, 237, 159, 255), (86, 176, 237, 255)]
+
         for i, length in enumerate(self.boom_sections):
+            offset = 0.5
             mass = self.boom_masses[i]
             moment = pymunk.moment_for_segment(mass, (-length/2,0), (length/2,0), self.boom_thickness)
             body = pymunk.Body(mass, moment)
-            body.position = pymunk.Vec2d(total_x + length/2, self.base_pos.y)
+            body.position = pymunk.Vec2d(total_x + length/2 - offset*i, self.base_pos.y)
             shape = pymunk.Segment(body, (-length/2,0), (length/2,0), self.boom_thickness)
-            shape.color = (255 - i * 50, i * 50, 0, 255)
+            shape.color = colors[i]
             shape.filter = pymunk.ShapeFilter(group=1)  # prevent collisions between boom sections
             self.space.add(body, shape)
 
@@ -48,7 +51,7 @@ class Crane:
                 joint = pymunk.PinJoint(body, pivot, (-length/2,0), (0,0))
                 self.space.add(joint)
             else:
-                rot_limit = pymunk.RotaryLimitJoint(prev_body, body, -0.01, 0.01)
+                rot_limit = pymunk.RotaryLimitJoint(prev_body, body, -0.005, 0.005)
                 self.space.add(rot_limit)
                 self.boom_joints.append(rot_limit)
 
@@ -58,12 +61,13 @@ class Crane:
                 self.space.add(groove)
                 self.boom_joints.append(groove)
 
+                initial_rest = offset
                 spring = pymunk.DampedSpring(prev_body, body,
                                             (prev_length/2,0),
                                             (-length/2,0),
-                                            rest_length=0.0,
-                                            stiffness=10000,
-                                            damping=1000)
+                                            rest_length=initial_rest,
+                                            stiffness=100000,
+                                            damping=10000)
                 self.space.add(spring)
                 self.boom_springs.append(spring)
 
@@ -100,8 +104,8 @@ class Crane:
 
     def telescope(self, direction):
         for i, spring in enumerate(self.boom_springs):
-            new_rest = max(self.boom_sections[i+1]/8, spring.rest_length + direction)
-            new_rest = min(new_rest, self.boom_sections[i+1] * 7/8)
+            new_rest = max(self.boom_sections[i+1]/10, spring.rest_length + direction)
+            new_rest = min(new_rest, self.boom_sections[i+1] * 9/10)
             spring.rest_length = new_rest
 
     def compute_cg(self):

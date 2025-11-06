@@ -13,7 +13,7 @@ WIDTH, HEIGHT = 1280, 800
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Crane")
 clock = pygame.time.Clock()
-FPS = 240
+FPS = 120
 
 PIXELS_PER_M = 6.0 
 BASE_X, BASE_Y = 100, HEIGHT - 100
@@ -33,19 +33,14 @@ angle_history = deque(maxlen=800)
 sim_time = 0.0
 
 boom_target_angle = crane.boom_bodies[0].angle
-was_rotating = False
-boom_torque_up = 250000
-boom_torque_down = 10000
 hoist_speed = 0.03       # m per frame
-extend_speed = 0.1      # m per frame
+extend_speed = 0.03      # m per frame
 boom_min_len = 3.0
 boom_max_len = 100.0
 
 boom_target_angle = crane.boom_bodies[0].angle
-was_rotating = False
-k_p = 500000.0
-k_d = 100000.0
-
+k_p = 50000000.0
+k_d = 25000000.0
 
 def draw_ui(panel_rect, inputs, outputs, cg_px, pivot_px):
     x, y, w, h = panel_rect
@@ -110,7 +105,7 @@ while running:
     if keys[pygame.K_e]:
         boom_target_angle -= 0.005
 
-    max_diff = math.radians(7)
+    max_diff = math.radians(3)
     boom_target_angle = np.clip(boom_target_angle, crane.boom_bodies[0].angle - max_diff, crane.boom_bodies[0].angle + max_diff)
 
     error = boom_target_angle - crane.boom_bodies[0].angle
@@ -126,7 +121,7 @@ while running:
         slide.max = crane.hoist_length
 
     if keys[pygame.K_s]:
-        crane.hoist_length = min(20.0, crane.hoist_length + hoist_speed)
+        crane.hoist_length = min(50.0, crane.hoist_length + hoist_speed)
         pin, slide = crane.payload_rope
         slide.min = crane.hoist_length
         slide.max = crane.hoist_length
@@ -137,7 +132,6 @@ while running:
         crane.telescope(-extend_speed)
     if keys[pygame.K_a]:
         crane.telescope(extend_speed)
-
 
     # FIS
     cg_pos = crane.compute_cg()
