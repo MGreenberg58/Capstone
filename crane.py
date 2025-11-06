@@ -142,4 +142,21 @@ class Crane:
 
     def boom_tip_world(self):
         return self.boom_tip_body.position
+    
+    def set_payload_mass(self, new_mass):
+        self.payload_mass = new_mass
+        moment = pymunk.moment_for_circle(new_mass, 0, self.payload_radius)
+        self.payload_body.mass = new_mass
+        self.payload_body.moment = moment
+
+    def set_boom_mass(self, new_mass):
+        curr = sum(self.boom_masses)
+        ratio = new_mass / curr
+        for i in range(len(self.boom_bodies)):
+            new = self.boom_masses[i] * ratio
+            self.boom_masses[i] = new
+            moment = pymunk.moment_for_segment(new, (-self.boom_sections[i]/2,0), (self.boom_sections[i]/2,0), self.boom_thickness)
+            self.boom_bodies[i].mass = new_mass
+            self.boom_bodies[i].moment = moment
+
 

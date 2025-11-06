@@ -38,9 +38,27 @@ extend_speed = 0.03      # m per frame
 boom_min_len = 3.0
 boom_max_len = 100.0
 
+payload_mass_min = 100.0
+payload_mass_max = 2000.0
+pslider_rect = pygame.Rect(WIDTH - 340 + 18, HEIGHT - 150, 260, 20)
+pslider_dragging = False
+
+boom_mass_min = 6000.0
+boom_mass_max = 12000.0
+bslider_rect = pygame.Rect(WIDTH - 340 + 18, HEIGHT - 200, 260, 20)
+bslider_dragging = False
+
 boom_target_angle = crane.boom_bodies[0].angle
 k_p = 50000000.0
 k_d = 25000000.0
+
+def draw_slider(label, value, min_val, max_val, rect, color=(80,140,220)):
+    pygame.draw.rect(screen, (180,180,180), rect)
+    rel = (value - min_val) / (max_val - min_val)
+    knob_x = rect.x + int(rel * rect.width)
+    pygame.draw.circle(screen, color, (knob_x, rect.centery), 10)
+    font = pygame.font.SysFont("Consolas", 16)
+    screen.blit(font.render(f"{label}: {value:.1f} kg", True, (10,10,10)), (rect.x, rect.y - 24))
 
 def draw_ui(panel_rect, inputs, outputs, cg_px, pivot_px):
     x, y, w, h = panel_rect
@@ -50,7 +68,10 @@ def draw_ui(panel_rect, inputs, outputs, cg_px, pivot_px):
     font = pygame.font.SysFont("Consolas", 16)
     big = pygame.font.SysFont("Consolas", 18, bold=True)
 
-    screen.blit(big.render("FIS — CraneSafetyFIS", True, (10,10,10)), (x + 18, y + 18))
+    screen.blit(big.render("CraneSafetyFIS", True, (10,10,10)), (x + 18, y + 18))
+
+    draw_slider("Payload Mass", crane.payload_mass, payload_mass_min, payload_mass_max, pslider_rect)
+    draw_slider("Boom Mass", sum(crane.boom_masses), boom_mass_min, boom_mass_max, bslider_rect)
 
     label_y = y + 52
     for k,v in inputs.items():
@@ -93,6 +114,28 @@ while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if pslider_rect.collidepoint(event.pos):
+                pslider_dragging = True
+            if bslider_rect.collidepoint(event.pos):
+                bslider_dragging = True
+
+        if event.type == pygame.MOUSEBUTTONUP:
+            pslider_dragging = False
+            bslider_dragging = False
+
+        if event.type == pygame.MOUSEMOTION:
+            if pslider_dragging:
+                x = event.pos[0]
+                rel_x = np.clip((x - pslider_rect.x) / pslider_rect.width, 0, 1)
+                payload_mass = payload_mass_min + rel_x * (payload_mass_max - payload_mass_min)
+                crane.set_payload_mass(payload_mass)
+            if bslider_dragging:
+                x = event.pos[0]
+                rel_x = np.clip((x - bslider_rect.x) / bslider_rect.width, 0, 1)
+                boom_mass = boom_mass_min + rel_x * (boom_mass_max - boom_mass_min)
+                crane.set_boom_mass(boom_mass)
 
     keys = pygame.key.get_pressed()
     if keys[pygame.K_ESCAPE]:
