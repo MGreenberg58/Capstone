@@ -67,7 +67,7 @@ class Crane:
                                             (-length/2,0),
                                             rest_length=initial_rest,
                                             stiffness=100000,
-                                            damping=10000)
+                                            damping=30000)
                 self.space.add(spring)
                 self.boom_springs.append(spring)
 
@@ -114,6 +114,12 @@ class Crane:
         weighted = sum((b.mass * b.position for b in bodies), start=pymunk.Vec2d(0,0))
         return weighted / total_mass
     
+    def compute_boom_cg(self):
+        bodies = self.boom_bodies
+        total_mass = sum(b.mass for b in bodies)
+        weighted = sum((b.mass * b.position for b in bodies), start=pymunk.Vec2d(0,0))
+        return weighted / total_mass
+    
     def gravity_moment(self):
         g = pymunk.Vec2d(0, -9.81)
         pivot = self.base_pos
@@ -156,7 +162,7 @@ class Crane:
             new = self.boom_masses[i] * ratio
             self.boom_masses[i] = new
             moment = pymunk.moment_for_segment(new, (-self.boom_sections[i]/2,0), (self.boom_sections[i]/2,0), self.boom_thickness)
-            self.boom_bodies[i].mass = new_mass
+            self.boom_bodies[i].mass = new
             self.boom_bodies[i].moment = moment
 
 

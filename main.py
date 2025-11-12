@@ -33,19 +33,19 @@ angle_history = deque(maxlen=800)
 sim_time = 0.0
 
 boom_target_angle = crane.boom_bodies[0].angle
-hoist_speed = 0.03       # m per frame
-extend_speed = 0.03      # m per frame
+hoist_speed = 0.02       # m per frame
+extend_speed = 0.01      # m per frame
 boom_min_len = 3.0
 boom_max_len = 100.0
 
 payload_mass_min = 100.0
 payload_mass_max = 2000.0
-pslider_rect = pygame.Rect(WIDTH - 340 + 18, HEIGHT - 150, 260, 20)
+pslider_rect = pygame.Rect(WIDTH - 340 + 18, HEIGHT - 200, 260, 20)
 pslider_dragging = False
 
 boom_mass_min = 6000.0
 boom_mass_max = 12000.0
-bslider_rect = pygame.Rect(WIDTH - 340 + 18, HEIGHT - 200, 260, 20)
+bslider_rect = pygame.Rect(WIDTH - 340 + 18, HEIGHT - 250, 260, 20)
 bslider_dragging = False
 
 boom_target_angle = crane.boom_bodies[0].angle
@@ -60,7 +60,7 @@ def draw_slider(label, value, min_val, max_val, rect, color=(80,140,220)):
     font = pygame.font.SysFont("Consolas", 16)
     screen.blit(font.render(f"{label}: {value:.1f} kg", True, (10,10,10)), (rect.x, rect.y - 24))
 
-def draw_ui(panel_rect, inputs, outputs, cg_px, pivot_px):
+def draw_ui(panel_rect, inputs, outputs, cg_px, pivot_px, boom_cg_px):
     x, y, w, h = panel_rect
     pygame.draw.rect(screen, (240,240,240), panel_rect)
     pygame.draw.rect(screen, (200,200,200), (x+6, y+6, w-12, h-12))
@@ -73,6 +73,10 @@ def draw_ui(panel_rect, inputs, outputs, cg_px, pivot_px):
     draw_slider("Payload Mass", crane.payload_mass, payload_mass_min, payload_mass_max, pslider_rect)
     draw_slider("Boom Mass", sum(crane.boom_masses), boom_mass_min, boom_mass_max, bslider_rect)
 
+    pygame.draw.circle(screen, (0,0,255), cg_px, 6) 
+    pygame.draw.circle(screen, (0,0,0), pivot_px, 6)  
+    pygame.draw.circle(screen, (0,200,0), boom_cg_px, 6)
+
     label_y = y + 52
     for k,v in inputs.items():
         screen.blit(font.render(f"{k}: {v:.2f}", True, (10,10,10)), (x + 18, label_y))
@@ -80,23 +84,28 @@ def draw_ui(panel_rect, inputs, outputs, cg_px, pivot_px):
 
     ca = outputs.get('ControlAdjustment', 0.0)
     ofb = outputs.get('OperatorFeedback', 0.0)
-    bar_w = w - 60
+    bar_w = w - 40
     bar_x = x + 18
 
     screen.blit(font.render("ControlAdjustment", True, (10,10,10)), (bar_x, label_y))
-    label_y += 18
+    label_y += 16
     pygame.draw.rect(screen, (180,180,180), (bar_x, label_y, bar_w, 18))
     filled = int((ca / 3.0) * bar_w)
     pygame.draw.rect(screen, (80,140,220), (bar_x, label_y, filled, 18))
-    screen.blit(font.render(f"{ca:.3f} / 3.0", True, (10,10,10)), (bar_x + bar_w + 8, label_y))
-    label_y += 26
+    screen.blit(font.render(f"{ca:.3f}", True, (10,10,10)), (bar_x + 8, label_y + 3))
+    label_y += 24
 
     screen.blit(font.render("OperatorFeedback", True, (10,10,10)), (bar_x, label_y))
-    label_y += 18
+    label_y += 16
     pygame.draw.rect(screen, (180,180,180), (bar_x, label_y, bar_w, 18))
     filled2 = int((ofb / 3.0) * bar_w)
     pygame.draw.rect(screen, (220,110,80), (bar_x, label_y, filled2, 18))
-    screen.blit(font.render(f"{ofb:.3f} / 3.0", True, (10,10,10)), (bar_x + bar_w + 8, label_y))
+    screen.blit(font.render(f"{ofb:.3f}", True, (10,10,10)), (bar_x + 8, label_y + 3))
+    label_y += 36
+
+    screen.blit(font.render(f"Boom Moment: {boom_moment/1000:.1f} kNm", True, (10,10,10)), (x + 18, label_y))
+    label_y += 20
+    screen.blit(font.render(f"Payload Moment: {payload_moment/1000:.1f} kNm", True, (10,10,10)), (x + 18, label_y))
     label_y += 36
 
     # draw CG marker and pivot marker
@@ -104,7 +113,9 @@ def draw_ui(panel_rect, inputs, outputs, cg_px, pivot_px):
     screen.blit(font.render("System CG", True, (10,10,10)), (x + 72, y + h - 86))
     pygame.draw.circle(screen, (0,0,0), (x + 60, y + h - 50), 6)
     screen.blit(font.render("Pivot", True, (10,10,10)), (x + 72, y + h - 56))
-
+    pygame.draw.circle(screen, (0,200,0), (x + 60, y + h - 110), 6)
+    screen.blit(font.render("Boom CG", True, (10,10,10)), (x + 72, y + h - 116))
+    
 
 running = True
 while running:
@@ -144,11 +155,11 @@ while running:
     # Boom angle
     rotating = False
     if keys[pygame.K_q]:
-        boom_target_angle += 0.005
+        boom_target_angle += 0.002
     if keys[pygame.K_e]:
-        boom_target_angle -= 0.005
+        boom_target_angle -= 0.002
 
-    max_diff = math.radians(3)
+    max_diff = math.radians(2)
     boom_target_angle = np.clip(boom_target_angle, crane.boom_bodies[0].angle - max_diff, crane.boom_bodies[0].angle + max_diff)
 
     error = boom_target_angle - crane.boom_bodies[0].angle
@@ -175,6 +186,15 @@ while running:
         crane.telescope(-extend_speed)
     if keys[pygame.K_a]:
         crane.telescope(extend_speed)
+
+    boom_cg = crane.compute_boom_cg()
+    pivot = crane.base_pos
+
+    boom_lever = abs(boom_cg.x - pivot.x)
+    payload_lever = abs(crane.payload_body.position.x - pivot.x)
+
+    boom_moment = sum(crane.boom_masses) * 9.81 * boom_lever
+    payload_moment = crane.payload_mass * 9.81 * payload_lever
 
     # FIS
     cg_pos = crane.compute_cg()
@@ -222,19 +242,11 @@ while running:
     pygame.draw.line(screen, (40,40,40), boom_tip_px, payload_px, max(1, int(PIXELS_PER_M * 0.05)))
     pygame.draw.circle(screen, (200,40,40), payload_px, max(2, int(PIXELS_PER_M * crane.payload_radius)))
 
-
-    # draw CG and pivot markers
-    cg_px = to_pygame(cg_pos)
-    pivot_px = to_pygame(crane.base_pos)
-    pygame.draw.circle(screen, (0,0,255), cg_px, 6)    # CG (blue)
-    pygame.draw.circle(screen, (0,0,0), pivot_px, 6)   # pivot (black)
-
-
     # draw FIS panel
     panel_rect = (WIDTH - 360, 20, 340, HEIGHT - 40)
     inputs = {'BL (m)': BL_input, 'CGD (m)': CGD_input, 'PH (m)': PH_input}
     outputs = {'ControlAdjustment': ca, 'OperatorFeedback': ofb}
-    draw_ui(panel_rect, inputs, outputs, cg_px, pivot_px)
+    draw_ui(panel_rect, inputs, outputs, to_pygame(cg_pos), to_pygame(crane.base_pos), to_pygame(boom_cg))
 
     # small instruction text
     font_sm = pygame.font.SysFont("Consolas", 16)

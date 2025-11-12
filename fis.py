@@ -27,13 +27,13 @@ class CraneFIS:
         self.BoomLength['Medium'] = fuzz.trapmf(self.BoomLength.universe, [15, 30, 50, 70])
         self.BoomLength['Long']   = fuzz.trapmf(self.BoomLength.universe, [60, 80, 120, 120])
 
-        self.CGDistance['Close']  = fuzz.trapmf(self.CGDistance.universe, [0, 0, 2, 6])
-        self.CGDistance['Medium'] = fuzz.trapmf(self.CGDistance.universe, [4, 8, 12, 18])
-        self.CGDistance['Far']    = fuzz.trapmf(self.CGDistance.universe, [14, 20, 40, 40])
+        self.CGDistance['Close']  = fuzz.trapmf(self.CGDistance.universe, [0, 0, 5, 8])
+        self.CGDistance['Medium'] = fuzz.trapmf(self.CGDistance.universe, [5, 9, 15, 20])
+        self.CGDistance['Far']    = fuzz.trapmf(self.CGDistance.universe, [14, 20, 50, 50])
 
-        self.PayloadHeight['Low']    = fuzz.trapmf(self.PayloadHeight.universe, [-30, -30, -5, 0])
-        self.PayloadHeight['Medium'] = fuzz.trapmf(self.PayloadHeight.universe, [-2, 2, 8, 15])
-        self.PayloadHeight['High']   = fuzz.trapmf(self.PayloadHeight.universe, [10, 20, 60, 60])
+        self.PayloadHeight['Low']    = fuzz.trapmf(self.PayloadHeight.universe, [-10, -10, 0, 3])
+        self.PayloadHeight['Medium'] = fuzz.trapmf(self.PayloadHeight.universe, [0, 2, 8, 15])
+        self.PayloadHeight['High']   = fuzz.trapmf(self.PayloadHeight.universe, [10, 25, 75, 75])
 
         self.ControlAdjustment['NoCorrection']    = fuzz.trimf(self.ControlAdjustment.universe, [0.0, 0.0, 1.0])
         self.ControlAdjustment['SmallCorrection'] = fuzz.trimf(self.ControlAdjustment.universe, [0.5, 1.0, 1.5])
