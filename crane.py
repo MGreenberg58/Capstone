@@ -18,6 +18,12 @@ class Crane:
 
         self.boom_springs = []
 
+        ground = pymunk.Segment(self.space.static_body, (-1000, self.base_pos.y), (1000, self.base_pos.y), 5.0)
+        ground.elasticity = 0.5
+        ground.friction = 1.0
+        self.space.add(ground)
+        self.ground = ground
+
         self._create_telescoping_boom()
         self._create_payload_rope()
 
@@ -27,8 +33,16 @@ class Crane:
         self.boom_joints = []
         self.boom_springs = []
 
-        pivot = pymunk.Body(body_type=pymunk.Body.STATIC)
-        pivot.position = self.base_pos
+        base_mass = 20000  
+        base_size = (8.0, 2.0) 
+        base_moment = pymunk.moment_for_box(base_mass, base_size)
+        pivot = pymunk.Body(base_mass, base_moment)
+        pivot.position = self.base_pos + pymunk.Vec2d(base_size[0]/2, base_size[1]/2)
+        base_shape = pymunk.Poly.create_box(pivot, base_size)
+        base_shape.friction = 1.0
+        base_shape.elasticity = 0.2
+        self.space.add(pivot, base_shape)
+        self.base_body = pivot
 
         prev_body = None
         prev_length = None
