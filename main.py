@@ -25,8 +25,14 @@ def to_pygame(pos):
 space = pymunk.Space()
 space.gravity = (0.0, -9.81)
 space.iterations = 100
+base_pos = (0.0, 0.0)
 
-crane = Crane(space)
+ground= pymunk.Segment(space.static_body, (-1000, base_pos[1]), (1000, base_pos[1]), 1.0)
+ground.elasticity = 0.5
+ground.friction = 1.0
+space.add(ground)
+
+crane = Crane(space, base_pos)
 fis = CraneFIS()
 
 angle_history = deque(maxlen=800)

@@ -18,12 +18,6 @@ class Crane:
 
         self.boom_springs = []
 
-        ground = pymunk.Segment(self.space.static_body, (-1000, self.base_pos.y), (1000, self.base_pos.y), 5.0)
-        ground.elasticity = 0.5
-        ground.friction = 1.0
-        self.space.add(ground)
-        self.ground = ground
-
         self._create_telescoping_boom()
         self._create_payload_rope()
 
@@ -47,6 +41,7 @@ class Crane:
         prev_body = None
         prev_length = None
         total_x = self.base_pos.x
+        start_angle = math.radians(45)
 
         colors = [(237, 86, 86, 255), (86, 237, 159, 255), (86, 176, 237, 255)]
 
@@ -55,7 +50,10 @@ class Crane:
             mass = self.boom_masses[i]
             moment = pymunk.moment_for_segment(mass, (-length/2,0), (length/2,0), self.boom_thickness)
             body = pymunk.Body(mass, moment)
-            body.position = pymunk.Vec2d(total_x + length/2 - offset*i, self.base_pos.y)
+            local_pos = pymunk.Vec2d(total_x + length/2 - offset*i - self.base_pos.x, 0)
+            rotated_pos = local_pos.rotated(start_angle)
+            body.position = self.base_pos + rotated_pos
+            body.angle = start_angle
             shape = pymunk.Segment(body, (-length/2,0), (length/2,0), self.boom_thickness)
             shape.color = colors[i]
             shape.filter = pymunk.ShapeFilter(group=1)  # prevent collisions between boom sections
