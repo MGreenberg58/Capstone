@@ -24,16 +24,15 @@ def to_pygame(pos):
 
 space = pymunk.Space()
 space.gravity = (0.0, -9.81)
+space.damping = 0.999
 space.iterations = 100
 base_pos = (0.0, 0.0)
 base_size = (8.0, 2.0) 
 
-ground= pymunk.Segment(space.static_body, (-1000, base_pos[1] - 1), (1000, base_pos[1] - 1), 1.0)
-ground.elasticity = 0.2
-ground.friction = 1.0
+ground= pymunk.Segment(space.static_body, (-1000, base_pos[1]), (1000, base_pos[1]), 0.0)
+ground.elasticity = 0
+ground.friction = 1
 space.add(ground)
-
-print(ground.a, ground.b)
 
 crane = Crane(space, base_pos, base_size)
 fis = CraneFIS()
@@ -41,9 +40,10 @@ fis = CraneFIS()
 angle_history = deque(maxlen=800)
 sim_time = 0.0
 
-boom_target_angle = crane.boom_bodies[0].angle
-hoist_speed = 0.02       # m per frame
-extend_speed = 0.01      # m per frame
+boom_target_angle = crane.boom_bodies[0].angle - crane.base_body.angle
+hoist_speed = 0.02 # m per frame
+extend_speed = 0.01 # m per frame
+angle_speed = 0.0005 # rad per frame
 boom_min_len = 3.0
 boom_max_len = 100.0
 
@@ -57,7 +57,7 @@ boom_mass_max = 12000.0
 bslider_rect = pygame.Rect(WIDTH - 340 + 18, HEIGHT - 250, 260, 20)
 bslider_dragging = False
 
-boom_target_angle = crane.boom_bodies[0].angle
+boom_target_angle = crane.boom_bodies[0].angle - crane.base_body.angle
 k_p = 50000000.0
 k_d = 25000000.0
 
@@ -186,15 +186,19 @@ while running:
     # Boom angle
     rotating = False
     if keys[pygame.K_q]:
-        boom_target_angle += 0.002
+        boom_target_angle += angle_speed
     if keys[pygame.K_e]:
-        boom_target_angle -= 0.002
+        boom_target_angle -= angle_speed
 
     max_diff = math.radians(2)
-    boom_target_angle = np.clip(boom_target_angle, crane.boom_bodies[0].angle - max_diff, crane.boom_bodies[0].angle + max_diff)
+    rel_angle = crane.boom_bodies[0].angle - crane.base_body.angle
 
-    error = boom_target_angle - crane.boom_bodies[0].angle
-    ang_vel = crane.boom_bodies[0].angular_velocity
+    # boom_target_angle = np.clip(boom_target_angle, rel_angle - max_diff, rel_angle + max_diff)
+    error = boom_target_angle - rel_angle
+
+    # print(rel_angle, boom_target_angle, error)
+
+    ang_vel = crane.boom_bodies[0].angular_velocity - crane.base_body.angular_velocity
     torque = k_p * error - k_d * ang_vel - crane.gravity_moment()
     crane.boom_bodies[0].torque += torque
 
@@ -219,7 +223,7 @@ while running:
         crane.telescope(extend_speed)
 
     boom_cg = crane.compute_boom_cg()
-    pivot = crane.base_pos
+    pivot = crane.base_body.position
 
     boom_lever = abs(boom_cg.x - pivot.x)
     payload_lever = abs(crane.payload_body.position.x - pivot.x)
@@ -229,9 +233,9 @@ while running:
 
     # FIS
     cg_pos = crane.compute_cg()
-    CGD_input = abs(cg_pos.x - crane.base_pos.x)
+    CGD_input = abs(cg_pos.x - crane.base_body.position.x)
     BL_input = crane.boom_length()
-    PH_input = (crane.payload_body.position.y - crane.base_pos.y)
+    PH_input = (crane.payload_body.position.y - crane.base_body.position.y)
 
     ca, ofb = fis.evaluate(BL_input, CGD_input, PH_input)
 
@@ -246,9 +250,6 @@ while running:
     # Rendering
     screen.fill((250, 250, 250))
 
-    base_px = to_pygame(crane.base_pos)
-    pygame.draw.rect(screen, (120,120,120), (base_px[0] - 20, base_px[1], 40, 120))
-
     ground_y = base_pos[1] 
     start_px = to_pygame((-1000, ground_y))
     end_px   = to_pygame((1000, ground_y))
@@ -257,7 +258,7 @@ while running:
     draw_base(screen, crane.base_body, crane.base_size)
 
     # boom
-    prev_px = to_pygame(crane.base_pos) 
+    prev_px = to_pygame(crane.base_body.position) 
     for body, length in zip(crane.boom_bodies, crane.boom_sections):
         start_world = body.position + pymunk.Vec2d(-length/2, 0).rotated(body.angle)
         end_world   = body.position + pymunk.Vec2d(length/2, 0).rotated(body.angle)
@@ -284,7 +285,7 @@ while running:
     panel_rect = (WIDTH - 360, 20, 340, HEIGHT - 40)
     inputs = {'BL (m)': BL_input, 'CGD (m)': CGD_input, 'PH (m)': PH_input}
     outputs = {'ControlAdjustment': ca, 'OperatorFeedback': ofb}
-    draw_ui(panel_rect, inputs, outputs, to_pygame(cg_pos), to_pygame(crane.base_pos), to_pygame(boom_cg))
+    draw_ui(panel_rect, inputs, outputs, to_pygame(cg_pos), to_pygame(crane.base_body.position), to_pygame(boom_cg))
 
     # small instruction text
     font_sm = pygame.font.SysFont("Consolas", 16)

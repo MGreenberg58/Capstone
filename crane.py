@@ -30,13 +30,13 @@ class Crane:
         self.boom_springs = []
 
         base_moment = pymunk.moment_for_box(self.base_mass, self.base_size)
-        pivot = pymunk.Body(self.base_mass, base_moment)
-        pivot.position = self.base_pos + pymunk.Vec2d(self.base_size[0]/2, self.base_size[1]/2)
-        base_shape = pymunk.Poly.create_box(pivot, self.base_size)
-        base_shape.friction = 1.0
-        base_shape.elasticity = 0.1
-        self.space.add(pivot, base_shape)
-        self.base_body = pivot
+        self.base_body = pymunk.Body(self.base_mass, base_moment)
+        self.base_body.position = self.base_pos + pymunk.Vec2d(0, self.base_size[1]/2 + 5)
+        base_shape = pymunk.Poly.create_box(self.base_body, self.base_size)
+        base_shape.filter = pymunk.ShapeFilter(group=1)
+        base_shape.friction = 1
+        base_shape.elasticity = 0.0
+        self.space.add(self.base_body, base_shape)
 
         prev_body = None
         prev_length = None
@@ -60,7 +60,7 @@ class Crane:
             self.space.add(body, shape)
 
             if i == 0:
-                joint = pymunk.PinJoint(body, pivot, (-length/2,0), (0,0))
+                joint = pymunk.PinJoint(body, self.base_body, (-length/2,0), (0,0))
                 self.space.add(joint)
             else:
                 rot_limit = pymunk.RotaryLimitJoint(prev_body, body, -0.005, 0.005)
@@ -79,7 +79,7 @@ class Crane:
                                             (-length/2,0),
                                             rest_length=initial_rest,
                                             stiffness=100000,
-                                            damping=30000)
+                                            damping=50000)
                 self.space.add(spring)
                 self.boom_springs.append(spring)
 
@@ -121,7 +121,7 @@ class Crane:
             spring.rest_length = new_rest
 
     def compute_cg(self):
-        bodies = self.boom_bodies + [self.payload_body]
+        bodies = self.boom_bodies + [self.payload_body, self.base_body]
         total_mass = sum(b.mass for b in bodies)
         weighted = sum((b.mass * b.position for b in bodies), start=pymunk.Vec2d(0,0))
         return weighted / total_mass
