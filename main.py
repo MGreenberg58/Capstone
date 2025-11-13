@@ -16,7 +16,7 @@ clock = pygame.time.Clock()
 FPS = 120
 
 PIXELS_PER_M = 6.0 
-BASE_X, BASE_Y = 100, HEIGHT - 100
+BASE_X, BASE_Y = 50, HEIGHT - 50
 
 def to_pygame(pos):
     x, y = pos
@@ -26,13 +26,16 @@ space = pymunk.Space()
 space.gravity = (0.0, -9.81)
 space.iterations = 100
 base_pos = (0.0, 0.0)
+base_size = (8.0, 2.0) 
 
-ground= pymunk.Segment(space.static_body, (-1000, base_pos[1]), (1000, base_pos[1]), 1.0)
-ground.elasticity = 0.5
+ground= pymunk.Segment(space.static_body, (-1000, base_pos[1] - 1), (1000, base_pos[1] - 1), 1.0)
+ground.elasticity = 0.2
 ground.friction = 1.0
 space.add(ground)
 
-crane = Crane(space, base_pos)
+print(ground.a, ground.b)
+
+crane = Crane(space, base_pos, base_size)
 fis = CraneFIS()
 
 angle_history = deque(maxlen=800)
@@ -57,6 +60,28 @@ bslider_dragging = False
 boom_target_angle = crane.boom_bodies[0].angle
 k_p = 50000000.0
 k_d = 25000000.0
+
+def draw_base(screen, base_body, base_size, color=(100, 100, 100)):
+    x, y = to_pygame(base_body.position)
+    angle = base_body.angle
+    w, h = base_size[0] * PIXELS_PER_M, base_size[1] * PIXELS_PER_M
+
+    rect_points = [
+        (-w / 2, -h / 2),
+        ( w / 2, -h / 2),
+        ( w / 2,  h / 2),
+        (-w / 2,  h / 2),
+    ]
+
+    rotated_points = []
+    for px, py in rect_points:
+        rx = px * math.cos(angle) - py * math.sin(angle)
+        ry = px * math.sin(angle) + py * math.cos(angle)
+        wx, wy = to_pygame((base_body.position.x + rx / PIXELS_PER_M,
+                            base_body.position.y + ry / PIXELS_PER_M))
+        rotated_points.append((wx, wy))
+
+    pygame.draw.polygon(screen, color, rotated_points)
 
 def draw_slider(label, value, min_val, max_val, rect, color=(80,140,220)):
     pygame.draw.rect(screen, (180,180,180), rect)
@@ -223,6 +248,13 @@ while running:
 
     base_px = to_pygame(crane.base_pos)
     pygame.draw.rect(screen, (120,120,120), (base_px[0] - 20, base_px[1], 40, 120))
+
+    ground_y = base_pos[1] 
+    start_px = to_pygame((-1000, ground_y))
+    end_px   = to_pygame((1000, ground_y))
+    pygame.draw.line(screen, (100, 100, 100), start_px, end_px, 4)
+
+    draw_base(screen, crane.base_body, crane.base_size)
 
     # boom
     prev_px = to_pygame(crane.base_pos) 

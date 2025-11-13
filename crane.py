@@ -3,7 +3,7 @@ import pymunk
 import math
 
 class Crane:
-    def __init__(self, space, base_pos=(0.0, 0.0), boom_sections=(40.0, 25.0, 15.0), boom_masses=(6000, 2500, 500), payload_mass=500.0, payload_radius=1.0, hoist_length=15.0):
+    def __init__(self, space, base_pos=(0.0, 0.0), base_size=(8.0, 2.0), base_mass=2000, boom_sections=(40.0, 25.0, 15.0), boom_masses=(6000, 2500, 500), payload_mass=500.0, payload_radius=1.0, hoist_length=15.0):
         self.space = space
         self.base_pos = pymunk.Vec2d(base_pos[0], base_pos[1])
         self.boom_sections = list(boom_sections)
@@ -12,6 +12,8 @@ class Crane:
         self.payload_mass = payload_mass
         self.payload_radius = payload_radius
         self.hoist_length = hoist_length
+        self.base_mass = base_mass
+        self.base_size = base_size
 
         self.payload_body = None
         self.payload_shape = None
@@ -27,14 +29,12 @@ class Crane:
         self.boom_joints = []
         self.boom_springs = []
 
-        base_mass = 20000  
-        base_size = (8.0, 2.0) 
-        base_moment = pymunk.moment_for_box(base_mass, base_size)
-        pivot = pymunk.Body(base_mass, base_moment)
-        pivot.position = self.base_pos + pymunk.Vec2d(base_size[0]/2, base_size[1]/2)
-        base_shape = pymunk.Poly.create_box(pivot, base_size)
+        base_moment = pymunk.moment_for_box(self.base_mass, self.base_size)
+        pivot = pymunk.Body(self.base_mass, base_moment)
+        pivot.position = self.base_pos + pymunk.Vec2d(self.base_size[0]/2, self.base_size[1]/2)
+        base_shape = pymunk.Poly.create_box(pivot, self.base_size)
         base_shape.friction = 1.0
-        base_shape.elasticity = 0.2
+        base_shape.elasticity = 0.1
         self.space.add(pivot, base_shape)
         self.base_body = pivot
 
