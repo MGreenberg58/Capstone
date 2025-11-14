@@ -105,7 +105,7 @@ def draw_ui(panel_rect, inputs, outputs, cg_px, pivot_px, boom_cg_px):
     draw_slider("Boom Mass", sum(crane.boom_masses), boom_mass_min, boom_mass_max, bslider_rect)
 
     pygame.draw.circle(screen, (0,0,255), cg_px, 6) 
-    pygame.draw.circle(screen, (0,0,0), pivot_px, 6)  
+    pygame.draw.circle(screen, (0,0,0), pivot_px, 3)  
     pygame.draw.circle(screen, (0,200,0), boom_cg_px, 6)
 
     label_y = y + 52

@@ -29,9 +29,11 @@ class Crane:
         self.boom_joints = []
         self.boom_springs = []
 
+        base_hinge_local = pymunk.Vec2d(0, self.base_size[1] / 2)
+
         base_moment = pymunk.moment_for_box(self.base_mass, self.base_size)
         self.base_body = pymunk.Body(self.base_mass, base_moment)
-        self.base_body.position = self.base_pos + pymunk.Vec2d(0, self.base_size[1]/2 + 5)
+        self.base_body.position = self.base_pos + pymunk.Vec2d(0, self.base_size[1]/2)
         base_shape = pymunk.Poly.create_box(self.base_body, self.base_size)
         base_shape.filter = pymunk.ShapeFilter(group=1)
         base_shape.friction = 1
@@ -40,8 +42,7 @@ class Crane:
 
         prev_body = None
         prev_length = None
-        total_x = self.base_pos.x
-        start_angle = math.radians(45)
+        start_angle = math.radians(30)
 
         colors = [(237, 86, 86, 255), (86, 237, 159, 255), (86, 176, 237, 255)]
 
@@ -50,36 +51,34 @@ class Crane:
             mass = self.boom_masses[i]
             moment = pymunk.moment_for_segment(mass, (-length/2,0), (length/2,0), self.boom_thickness)
             body = pymunk.Body(mass, moment)
-            local_pos = pymunk.Vec2d(total_x + length/2 - offset*i - self.base_pos.x, 0)
-            rotated_pos = local_pos.rotated(start_angle)
-            body.position = self.base_pos + rotated_pos
+
+            pivot_world = self.base_body.local_to_world(base_hinge_local)
+            direction = pymunk.Vec2d(1, 0).rotated(start_angle)
+            section_offset = sum(self.boom_sections[:i]) + length / 2
+
+            body.position = pivot_world + direction * section_offset
             body.angle = start_angle
+
+
             shape = pymunk.Segment(body, (-length/2,0), (length/2,0), self.boom_thickness)
             shape.color = colors[i]
             shape.filter = pymunk.ShapeFilter(group=1)  # prevent collisions between boom sections
             self.space.add(body, shape)
 
             if i == 0:
-                joint = pymunk.PinJoint(body, self.base_body, (-length/2,0), (0,0))
+                joint = pymunk.PinJoint(self.base_body, body,  base_hinge_local, (-length/2,0))
                 self.space.add(joint)
             else:
                 rot_limit = pymunk.RotaryLimitJoint(prev_body, body, -0.005, 0.005)
                 self.space.add(rot_limit)
                 self.boom_joints.append(rot_limit)
 
-                groove = pymunk.GrooveJoint(prev_body, body,
-                                            (-prev_length/2,0), (prev_length/2,0),
-                                            (-length/2,0))
+                groove = pymunk.GrooveJoint(prev_body, body,(-prev_length/2,0), (prev_length/2,0), (-length/2,0))
                 self.space.add(groove)
                 self.boom_joints.append(groove)
 
                 initial_rest = offset
-                spring = pymunk.DampedSpring(prev_body, body,
-                                            (prev_length/2,0),
-                                            (-length/2,0),
-                                            rest_length=initial_rest,
-                                            stiffness=100000,
-                                            damping=50000)
+                spring = pymunk.DampedSpring(prev_body, body, (prev_length/2,0), (-length/2,0), rest_length=initial_rest, stiffness=100000, damping=50000)
                 self.space.add(spring)
                 self.boom_springs.append(spring)
 
@@ -87,7 +86,6 @@ class Crane:
             self.boom_shapes.append(shape)
             prev_body = body
             prev_length = length
-            total_x += length
 
         self.boom_tip_body = self.boom_bodies[-1]
         self.total_boom_length = sum(self.boom_sections)
