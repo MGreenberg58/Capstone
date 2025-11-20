@@ -3,7 +3,7 @@ import pymunk
 import math
 
 class Crane:
-    def __init__(self, space, base_pos=(0.0, 0.0), base_size=(8.0, 2.0), base_mass=2000, boom_sections=(40.0, 25.0, 15.0), boom_masses=(6000, 2500, 500), payload_mass=500.0, payload_radius=1.0, hoist_length=15.0):
+    def __init__(self, space, base_pos=(0.0, 0.0), base_size=(8.0, 2.0), base_mass=20000, boom_sections=(40.0, 25.0, 15.0), boom_masses=(6000, 2500, 500), payload_mass=500.0, payload_radius=1.0, hoist_length=15.0):
         self.space = space
         self.base_pos = pymunk.Vec2d(base_pos[0], base_pos[1])
         self.boom_sections = list(boom_sections)
@@ -164,6 +164,12 @@ class Crane:
         moment = pymunk.moment_for_circle(new_mass, 0, self.payload_radius)
         self.payload_body.mass = new_mass
         self.payload_body.moment = moment
+
+    def set_base_mass(self, new_mass):
+        self.base_mass = new_mass
+        moment = pymunk.moment_for_box(self.base_mass, self.base_size)
+        self.base_body.mass = new_mass
+        self.base_body.moment = moment
 
     def set_boom_mass(self, new_mass):
         curr = sum(self.boom_masses)

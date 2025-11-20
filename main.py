@@ -57,6 +57,11 @@ boom_mass_max = 12000.0
 bslider_rect = pygame.Rect(WIDTH - 340 + 18, HEIGHT - 250, 260, 20)
 bslider_dragging = False
 
+base_mass_min = 5000.0
+base_mass_max = 30000.0
+mslider_rect = pygame.Rect(WIDTH - 340 + 18, HEIGHT - 300, 260, 20)
+mslider_dragging = False
+
 boom_target_angle = crane.boom_bodies[0].angle - crane.base_body.angle
 k_p = 50000000.0
 k_d = 25000000.0
@@ -103,6 +108,7 @@ def draw_ui(panel_rect, inputs, outputs, cg_px, pivot_px, boom_cg_px):
 
     draw_slider("Payload Mass", crane.payload_mass, payload_mass_min, payload_mass_max, pslider_rect)
     draw_slider("Boom Mass", sum(crane.boom_masses), boom_mass_min, boom_mass_max, bslider_rect)
+    draw_slider("Base Mass", crane.base_mass, base_mass_min, base_mass_max, mslider_rect)
 
     pygame.draw.circle(screen, (0,0,255), cg_px, 6) 
     pygame.draw.circle(screen, (0,0,0), pivot_px, 3)  
@@ -147,7 +153,6 @@ def draw_ui(panel_rect, inputs, outputs, cg_px, pivot_px, boom_cg_px):
     pygame.draw.circle(screen, (0,200,0), (x + 60, y + h - 110), 6)
     screen.blit(font.render("Boom CG", True, (10,10,10)), (x + 72, y + h - 116))
     
-
 running = True
 while running:
     dt = 1.0 / FPS
@@ -162,10 +167,13 @@ while running:
                 pslider_dragging = True
             if bslider_rect.collidepoint(event.pos):
                 bslider_dragging = True
+            if mslider_rect.collidepoint(event.pos):
+                mslider_dragging = True
 
         if event.type == pygame.MOUSEBUTTONUP:
             pslider_dragging = False
             bslider_dragging = False
+            mslider_dragging = False
 
         if event.type == pygame.MOUSEMOTION:
             if pslider_dragging:
@@ -178,6 +186,11 @@ while running:
                 rel_x = np.clip((x - bslider_rect.x) / bslider_rect.width, 0, 1)
                 boom_mass = boom_mass_min + rel_x * (boom_mass_max - boom_mass_min)
                 crane.set_boom_mass(boom_mass)
+            if mslider_dragging:
+                x = event.pos[0]
+                rel_x = np.clip((x - mslider_rect.x) / mslider_rect.width, 0, 1)
+                base_mass = base_mass_min + rel_x * (base_mass_max - base_mass_min)
+                crane.set_base_mass(base_mass)
 
     keys = pygame.key.get_pressed()
     if keys[pygame.K_ESCAPE]:
