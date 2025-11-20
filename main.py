@@ -29,7 +29,7 @@ space.iterations = 100
 base_pos = (0.0, 0.0)
 base_size = (8.0, 2.0) 
 
-ground= pymunk.Segment(space.static_body, (-1000, base_pos[1]), (1000, base_pos[1]), 0.0)
+ground = pymunk.Segment(space.static_body, (-1000, base_pos[1] - 1), (1000, base_pos[1] - 1), 1.0)
 ground.elasticity = 0
 ground.friction = 1
 space.add(ground)
@@ -43,7 +43,7 @@ sim_time = 0.0
 boom_target_angle = crane.boom_bodies[0].angle - crane.base_body.angle
 hoist_speed = 0.02 # m per frame
 extend_speed = 0.01 # m per frame
-angle_speed = 0.0005 # rad per frame
+angle_speed = 0.001 # rad per frame
 boom_min_len = 3.0
 boom_max_len = 100.0
 
@@ -63,8 +63,8 @@ mslider_rect = pygame.Rect(WIDTH - 340 + 18, HEIGHT - 300, 260, 20)
 mslider_dragging = False
 
 boom_target_angle = crane.boom_bodies[0].angle - crane.base_body.angle
-k_p = 50000000.0
-k_d = 25000000.0
+k_p = 0.1
+k_d = 0.03
 
 def draw_base(screen, base_body, base_size, color=(100, 100, 100)):
     x, y = to_pygame(base_body.position)
@@ -86,6 +86,15 @@ def draw_base(screen, base_body, base_size, color=(100, 100, 100)):
                             base_body.position.y + ry / PIXELS_PER_M))
         rotated_points.append((wx, wy))
 
+    foot_offsets = [
+        (-base_size[0]/2, -base_size[1]/2),
+        ( base_size[0]/2, -base_size[1]/2)
+    ]
+    foot_radius = 0.7
+    for offset in foot_offsets:
+        foot_world = base_body.local_to_world(offset)
+        pygame.draw.circle(screen, color, to_pygame(foot_world), int(foot_radius * PIXELS_PER_M))
+
     pygame.draw.polygon(screen, color, rotated_points)
 
 def draw_slider(label, value, min_val, max_val, rect, color=(80,140,220)):
@@ -96,7 +105,7 @@ def draw_slider(label, value, min_val, max_val, rect, color=(80,140,220)):
     font = pygame.font.SysFont("Consolas", 16)
     screen.blit(font.render(f"{label}: {value:.1f} kg", True, (10,10,10)), (rect.x, rect.y - 24))
 
-def draw_ui(panel_rect, inputs, outputs, cg_px, pivot_px, boom_cg_px):
+def draw_ui(panel_rect, inputs, outputs, cg_px, pivot_px, boom_cg_px, base_cg_px):
     x, y, w, h = panel_rect
     pygame.draw.rect(screen, (240,240,240), panel_rect)
     pygame.draw.rect(screen, (200,200,200), (x+6, y+6, w-12, h-12))
@@ -109,10 +118,7 @@ def draw_ui(panel_rect, inputs, outputs, cg_px, pivot_px, boom_cg_px):
     draw_slider("Payload Mass", crane.payload_mass, payload_mass_min, payload_mass_max, pslider_rect)
     draw_slider("Boom Mass", sum(crane.boom_masses), boom_mass_min, boom_mass_max, bslider_rect)
     draw_slider("Base Mass", crane.base_mass, base_mass_min, base_mass_max, mslider_rect)
-
-    pygame.draw.circle(screen, (0,0,255), cg_px, 6) 
-    pygame.draw.circle(screen, (0,0,0), pivot_px, 3)  
-    pygame.draw.circle(screen, (0,200,0), boom_cg_px, 6)
+    
 
     label_y = y + 52
     for k,v in inputs.items():
@@ -143,15 +149,25 @@ def draw_ui(panel_rect, inputs, outputs, cg_px, pivot_px, boom_cg_px):
     screen.blit(font.render(f"Boom Moment: {boom_moment/1000:.1f} kNm", True, (10,10,10)), (x + 18, label_y))
     label_y += 20
     screen.blit(font.render(f"Payload Moment: {payload_moment/1000:.1f} kNm", True, (10,10,10)), (x + 18, label_y))
+    label_y += 20
+    screen.blit(font.render(f"Base Moment: {base_moment/1000:.1f} kNm", True, (10,10,10)), (x + 18, label_y))
     label_y += 36
 
     # draw CG marker and pivot marker
+    pygame.draw.circle(screen, (0,0,255), cg_px, 6) 
+    pygame.draw.circle(screen, (0,0,0), pivot_px, 4)  
+    pygame.draw.circle(screen, (0,100,0), boom_cg_px, 6)
+    pygame.draw.circle(screen, (250,150,0), base_cg_px, 6)
+
+    pygame.draw.circle(screen, (0,100,0), (x + 60, y + h - 110), 6)
+    screen.blit(font.render("Boom CG", True, (10,10,10)), (x + 72, y + h - 116))
     pygame.draw.circle(screen, (0,0,255), (x + 60, y + h - 80), 6)
     screen.blit(font.render("System CG", True, (10,10,10)), (x + 72, y + h - 86))
     pygame.draw.circle(screen, (0,0,0), (x + 60, y + h - 50), 6)
     screen.blit(font.render("Pivot", True, (10,10,10)), (x + 72, y + h - 56))
-    pygame.draw.circle(screen, (0,200,0), (x + 60, y + h - 110), 6)
-    screen.blit(font.render("Boom CG", True, (10,10,10)), (x + 72, y + h - 116))
+    pygame.draw.circle(screen, (250,150,0), (x + 60, y + h - 20), 6)
+    screen.blit(font.render("Base CG", True, (10,10,10)), (x + 72, y + h - 26))
+    
     
 running = True
 while running:
@@ -197,23 +213,28 @@ while running:
         running = False
 
     # Boom angle
-    rotating = False
-    if keys[pygame.K_q]:
-        boom_target_angle += angle_speed
-    if keys[pygame.K_e]:
-        boom_target_angle -= angle_speed
+    pivot_world = crane.base_body.local_to_world(crane.pivot.anchor_a)
 
-    max_diff = math.radians(2)
     rel_angle = crane.boom_bodies[0].angle - crane.base_body.angle
+    rel_ang_vel = crane.boom_bodies[0].angular_velocity - crane.base_body.angular_velocity
 
-    # boom_target_angle = np.clip(boom_target_angle, rel_angle - max_diff, rel_angle + max_diff)
+    r_boom = crane.boom_bodies[0].position - pivot_world
+    r_base = crane.base_body.position - pivot_world
     error = boom_target_angle - rel_angle
+    # print(error)
+    
+    desired_rate = k_p * (boom_target_angle - rel_angle) - k_d * rel_ang_vel
 
-    # print(rel_angle, boom_target_angle, error)
+    if keys[pygame.K_e]:
+        boom_target_angle += angle_speed
+    elif keys[pygame.K_q]:
+        boom_target_angle -= angle_speed
+    else:
+        desired_rate = 0
+        boom_target_angle = rel_angle
 
-    ang_vel = crane.boom_bodies[0].angular_velocity - crane.base_body.angular_velocity
-    torque = k_p * error - k_d * ang_vel - crane.gravity_moment()
-    crane.boom_bodies[0].torque += torque
+    crane.motor.rate = desired_rate
+    # print(desired_rate)
 
     # Hoist
     if keys[pygame.K_w]:
@@ -236,13 +257,15 @@ while running:
         crane.telescope(extend_speed)
 
     boom_cg = crane.compute_boom_cg()
-    pivot = crane.base_body.position
+    pivot = crane.base_body.local_to_world(crane.pivot.anchor_a)
 
-    boom_lever = abs(boom_cg.x - pivot.x)
-    payload_lever = abs(crane.payload_body.position.x - pivot.x)
+    boom_lever = pivot.x - boom_cg.x 
+    payload_lever = pivot.x - crane.payload_body.position.x
+    base_lever = pivot.x - crane.base_body.position.x
 
     boom_moment = sum(crane.boom_masses) * 9.81 * boom_lever
     payload_moment = crane.payload_mass * 9.81 * payload_lever
+    base_moment = crane.base_mass * 9.81 * base_lever
 
     # FIS
     cg_pos = crane.compute_cg()
@@ -298,7 +321,7 @@ while running:
     panel_rect = (WIDTH - 360, 20, 340, HEIGHT - 40)
     inputs = {'BL (m)': BL_input, 'CGD (m)': CGD_input, 'PH (m)': PH_input}
     outputs = {'ControlAdjustment': ca, 'OperatorFeedback': ofb}
-    draw_ui(panel_rect, inputs, outputs, to_pygame(cg_pos), to_pygame(crane.base_body.position), to_pygame(boom_cg))
+    draw_ui(panel_rect, inputs, outputs, to_pygame(cg_pos), to_pygame(pivot), to_pygame(boom_cg), to_pygame(crane.base_body.position))
 
     # small instruction text
     font_sm = pygame.font.SysFont("Consolas", 16)

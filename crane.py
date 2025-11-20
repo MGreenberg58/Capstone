@@ -23,26 +23,39 @@ class Crane:
         self._create_telescoping_boom()
         self._create_payload_rope()
 
+        self.motor = pymunk.SimpleMotor(self.base_body, self.boom_bodies[0], rate=0)
+        self.motor.max_force = 5e7 
+        space.add(self.motor)
+
     def _create_telescoping_boom(self):
         self.boom_bodies = []
         self.boom_shapes = []
         self.boom_joints = []
         self.boom_springs = []
 
-        base_hinge_local = pymunk.Vec2d(0, self.base_size[1] / 2)
+        base_hinge_local = pymunk.Vec2d(-self.base_size[0] / 2, self.base_size[1] / 2)
 
         base_moment = pymunk.moment_for_box(self.base_mass, self.base_size)
         self.base_body = pymunk.Body(self.base_mass, base_moment)
-        self.base_body.position = self.base_pos + pymunk.Vec2d(0, self.base_size[1]/2)
+        self.base_body.position = self.base_pos + pymunk.Vec2d(0, self.base_size[1]/2 + 1)
         base_shape = pymunk.Poly.create_box(self.base_body, self.base_size)
         base_shape.filter = pymunk.ShapeFilter(group=1)
         base_shape.friction = 1
         base_shape.elasticity = 0.0
         self.space.add(self.base_body, base_shape)
 
+        foot_left_shape = pymunk.Circle(self.base_body, 0.7, offset=(-self.base_size[0] / 2, -self.base_size[1] / 2))
+        foot_right_shape = pymunk.Circle(self.base_body, 0.7, offset=(self.base_size[0] / 2, -self.base_size[1] / 2))
+
+        foot_left_shape.friction = 1
+        foot_right_shape.friction = 1
+        foot_left_shape.elasticity = foot_right_shape.elasticity = 0
+
+        self.space.add(foot_left_shape, foot_right_shape)
+
         prev_body = None
         prev_length = None
-        start_angle = math.radians(30)
+        start_angle = math.radians(45)
 
         colors = [(237, 86, 86, 255), (86, 237, 159, 255), (86, 176, 237, 255)]
 
@@ -66,8 +79,8 @@ class Crane:
             self.space.add(body, shape)
 
             if i == 0:
-                joint = pymunk.PinJoint(self.base_body, body,  base_hinge_local, (-length/2,0))
-                self.space.add(joint)
+                self.pivot = pymunk.PinJoint(self.base_body, body, base_hinge_local, (-length/2,0))
+                self.space.add(self.pivot)
             else:
                 rot_limit = pymunk.RotaryLimitJoint(prev_body, body, -0.005, 0.005)
                 self.space.add(rot_limit)
@@ -132,7 +145,7 @@ class Crane:
     
     def gravity_moment(self):
         g = pymunk.Vec2d(0, -9.81)
-        pivot = self.base_pos
+        pivot = self.base_body.local_to_world(self.pivot.anchor_a)
         total_torque = 0.0
         
         for body in self.boom_bodies:
