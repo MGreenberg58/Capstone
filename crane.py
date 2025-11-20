@@ -3,7 +3,7 @@ import pymunk
 import math
 
 class Crane:
-    def __init__(self, space, base_pos=(0.0, 0.0), base_size=(8.0, 2.0), base_mass=20000, boom_sections=(40.0, 25.0, 15.0), boom_masses=(6000, 2500, 500), payload_mass=500.0, payload_radius=1.0, hoist_length=15.0):
+    def __init__(self, space, base_pos=(0.0, 0.0), base_size=(8.0, 2.0), base_mass=20000, boom_sections=(30.0, 25.0, 20.0), boom_masses=(3000, 2750, 2250), payload_mass=500.0, payload_radius=1.0, hoist_length=15.0):
         self.space = space
         self.base_pos = pymunk.Vec2d(base_pos[0], base_pos[1])
         self.boom_sections = list(boom_sections)
@@ -24,7 +24,7 @@ class Crane:
         self._create_payload_rope()
 
         self.motor = pymunk.SimpleMotor(self.base_body, self.boom_bodies[0], rate=0)
-        self.motor.max_force = 5e7 
+        self.motor.max_force = 6e7 
         space.add(self.motor)
 
     def _create_telescoping_boom(self):
@@ -33,7 +33,7 @@ class Crane:
         self.boom_joints = []
         self.boom_springs = []
 
-        base_hinge_local = pymunk.Vec2d(-self.base_size[0] / 2, self.base_size[1] / 2)
+        base_hinge_local = pymunk.Vec2d(self.base_size[0] / 2, self.base_size[1] / 2)
 
         base_moment = pymunk.moment_for_box(self.base_mass, self.base_size)
         self.base_body = pymunk.Body(self.base_mass, base_moment)
@@ -55,7 +55,7 @@ class Crane:
 
         prev_body = None
         prev_length = None
-        start_angle = math.radians(45)
+        start_angle = math.radians(70)
 
         colors = [(237, 86, 86, 255), (86, 237, 159, 255), (86, 176, 237, 255)]
 

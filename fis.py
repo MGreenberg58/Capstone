@@ -23,15 +23,15 @@ class CraneFIS:
         self.sim = ctrl.ControlSystemSimulation(self.ctrlsys, flush_after_run=30)
 
     def _build_mfs(self):
-        self.BoomLength['Short']  = fuzz.trapmf(self.BoomLength.universe, [0, 0, 10, 25])
-        self.BoomLength['Medium'] = fuzz.trapmf(self.BoomLength.universe, [15, 30, 50, 70])
-        self.BoomLength['Long']   = fuzz.trapmf(self.BoomLength.universe, [60, 80, 120, 120])
+        self.BoomLength['Short']  = fuzz.trapmf(self.BoomLength.universe, [0, 0, 30, 40])
+        self.BoomLength['Medium'] = fuzz.trapmf(self.BoomLength.universe, [25, 35, 50, 70])
+        self.BoomLength['Long']   = fuzz.trapmf(self.BoomLength.universe, [50, 70, 120, 120])
 
-        self.CGDistance['Close']  = fuzz.trapmf(self.CGDistance.universe, [0, 0, 5, 8])
-        self.CGDistance['Medium'] = fuzz.trapmf(self.CGDistance.universe, [5, 9, 15, 20])
-        self.CGDistance['Far']    = fuzz.trapmf(self.CGDistance.universe, [14, 20, 50, 50])
+        self.CGDistance['Close']  = fuzz.trapmf(self.CGDistance.universe, [0, 0, 1, 3])
+        self.CGDistance['Medium'] = fuzz.trapmf(self.CGDistance.universe, [2, 4, 5, 6])
+        self.CGDistance['Far']    = fuzz.trapmf(self.CGDistance.universe, [4, 7, 20, 20])
 
-        self.PayloadHeight['Low']    = fuzz.trapmf(self.PayloadHeight.universe, [-10, -10, 0, 3])
+        self.PayloadHeight['Low']    = fuzz.trapmf(self.PayloadHeight.universe, [0, 0, 2, 4])
         self.PayloadHeight['Medium'] = fuzz.trapmf(self.PayloadHeight.universe, [0, 2, 8, 15])
         self.PayloadHeight['High']   = fuzz.trapmf(self.PayloadHeight.universe, [10, 25, 75, 75])
 
@@ -47,13 +47,16 @@ class CraneFIS:
 
     def _build_rules(self):
         rules = []
-        rules.append(ctrl.Rule(self.BoomLength['Long'] & self.CGDistance['Far'],
+        rules.append(ctrl.Rule(self.CGDistance['Far'],
                             (self.ControlAdjustment['OverrideStop'], self.OperatorFeedback['Danger'])))
         rules.append(ctrl.Rule(self.CGDistance['Close'],
                             (self.ControlAdjustment['NoCorrection'], self.OperatorFeedback['Safe'])))
-
+        
+        # rules.append(ctrl.Rule(self.BoomLength['Long'] & self.CGDistance['Far'],
+        #                     (self.ControlAdjustment['OverrideStop'], self.OperatorFeedback['Danger'])))
+        
         rules.append(ctrl.Rule(self.BoomLength['Short'] & self.CGDistance['Medium'] & self.PayloadHeight['Low'],
-                            (self.ControlAdjustment['NoCorrection'], self.OperatorFeedback['Safe'])))
+                            (self.ControlAdjustment['NoCorrection'], self.OperatorFeedback['Caution'])))
         rules.append(ctrl.Rule(self.BoomLength['Medium'] & self.CGDistance['Medium'] & self.PayloadHeight['Low'],
                             (self.ControlAdjustment['SmallCorrection'], self.OperatorFeedback['Caution'])))
         rules.append(ctrl.Rule(self.BoomLength['Long'] & self.CGDistance['Medium'] & self.PayloadHeight['Low'],

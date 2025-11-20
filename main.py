@@ -27,7 +27,7 @@ space.gravity = (0.0, -9.81)
 space.damping = 0.999
 space.iterations = 100
 base_pos = (0.0, 0.0)
-base_size = (8.0, 2.0) 
+base_size = (15.0, 2.0) 
 
 ground = pymunk.Segment(space.static_body, (-1000, base_pos[1] - 1), (1000, base_pos[1] - 1), 1.0)
 ground.elasticity = 0
