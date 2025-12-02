@@ -13,9 +13,9 @@ WIDTH, HEIGHT = 1280, 800
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Crane")
 clock = pygame.time.Clock()
-FPS = 120
+FPS = 60
 
-PIXELS_PER_M = 6.0 
+PIXELS_PER_M = 7.0 
 BASE_X, BASE_Y = 50, HEIGHT - 50
 
 def to_pygame(pos):
@@ -25,8 +25,8 @@ def to_pygame(pos):
 space = pymunk.Space()
 space.gravity = (0.0, -9.81)
 space.damping = 0.999
-space.iterations = 100
-base_pos = (0.0, 0.0)
+space.iterations = 50
+base_pos = (10.0, 0.0)
 base_size = (15.0, 2.0) 
 
 ground = pymunk.Segment(space.static_body, (-1000, base_pos[1] - 1), (1000, base_pos[1] - 1), 1.0)
@@ -151,6 +151,8 @@ def draw_ui(panel_rect, inputs, outputs, cg_px, pivot_px, boom_cg_px, base_cg_px
     screen.blit(font.render(f"Payload Moment: {payload_moment/1000:.1f} kNm", True, (10,10,10)), (x + 18, label_y))
     label_y += 20
     screen.blit(font.render(f"Base Moment: {base_moment/1000:.1f} kNm", True, (10,10,10)), (x + 18, label_y))
+    label_y += 20
+    screen.blit(font.render(f"Net Moment: {(base_moment + boom_moment + payload_moment)/1000:.1f} kNm", True, (10,10,10)), (x + 18, label_y))
     label_y += 36
 
     # draw CG marker and pivot marker
@@ -272,6 +274,7 @@ while running:
     CGD_input = abs(cg_pos.x - crane.base_body.position.x)
     BL_input = crane.boom_length()
     PH_input = (crane.payload_body.position.y - crane.base_body.position.y)
+    BA_input = crane.boom_bodies[0].angle - crane.base_body.angle
 
     ca, ofb = fis.evaluate(BL_input, CGD_input, PH_input)
 
