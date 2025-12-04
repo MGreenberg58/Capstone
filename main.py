@@ -7,6 +7,7 @@ from collections import deque
 
 from crane import Crane
 from fis import CraneFIS
+from sensor import SensorNoiseModel
 
 pygame.init()
 WIDTH, HEIGHT = 1280, 800
@@ -170,7 +171,16 @@ def draw_ui(panel_rect, inputs, outputs, cg_px, pivot_px, boom_cg_px, base_cg_px
     pygame.draw.circle(screen, (250,150,0), (x + 60, y + h - 20), 6)
     screen.blit(font.render("Base CG", True, (10,10,10)), (x + 72, y + h - 26))
     
-    
+
+encoder_model = SensorNoiseModel(dt=1/120,
+                                sigma=0.001,
+                                bias_sigma=1e-4,    
+                                bias_tau=100.0,  
+                                quantization=0.0005, # encoder resolution
+                                delay=0.01,         # 10 ms latency
+                                dim=1,
+                                seed=42)
+  
 running = True
 while running:
     dt = 1.0 / FPS

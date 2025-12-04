@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from fis import CraneFIS
+from sensor import SensorNoiseModel
 
 fis = CraneFIS()
 
@@ -70,4 +71,6 @@ corr_ph = np.corrcoef(ph_samples, ca_samples)[0,1]
 
 print("ControlAdjustment correlations:")
 print(f"BoomLength: {corr_bl:.3f}, CGDistance: {corr_cgd:.3f}, PayloadHeight: {corr_ph:.3f}")
+
+
 
