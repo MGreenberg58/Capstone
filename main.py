@@ -14,7 +14,7 @@ WIDTH, HEIGHT = 1280, 800
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Crane")
 clock = pygame.time.Clock()
-FPS = 60
+FPS = 120
 
 PIXELS_PER_M = 7.0 
 BASE_X, BASE_Y = 50, HEIGHT - 50
@@ -172,18 +172,18 @@ def draw_ui(panel_rect, inputs, outputs, cg_px, pivot_px, boom_cg_px, base_cg_px
     screen.blit(font.render("Base CG", True, (10,10,10)), (x + 72, y + h - 26))
     
 
-encoder_model = SensorNoiseModel(dt=1/120,
+encoder_model = SensorNoiseModel(dt=1/FPS,
                                 sigma=0.001,
                                 bias_sigma=1e-4,    
                                 bias_tau=100.0,  
-                                quantization=0.0005, # encoder resolution
-                                delay=0.01,         # 10 ms latency
+                                quantization=0.0005, 
+                                delay=0.01,
                                 dim=1,
                                 seed=42)
   
 running = True
+dt = 1.0 / FPS
 while running:
-    dt = 1.0 / FPS
     sim_time += dt
 
     for event in pygame.event.get():

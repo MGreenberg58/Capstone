@@ -11,14 +11,13 @@ def compute_frontier_with_stability(
     boom_mass, payload_mass, base_mass,
     alpha, beta, d_base,
     L_min=15.0, L_max=80.0, L_step=3,
-    θ_range=np.linspace(0, 1.5, 100),
-    θ_offset=0.0
+    θ_range=np.linspace(0, 1.5, 100)
 ):
     stable_pts = []
     unstable_pts = []
     frontier_pts = []
     frontier_lengths = []
-    frontier_thetas = []   # NEW
+    frontier_thetas = []
 
     for θ in θ_range:
         max_stable_L = None
@@ -34,7 +33,7 @@ def compute_frontier_with_stability(
 
             net = boom_moment + payload_moment + base_moment
 
-            θ_total = θ + θ_offset
+            θ_total = θ
             x_tip = L * np.cos(θ_total)
             y_tip = L * np.sin(θ_total)
 
@@ -47,12 +46,12 @@ def compute_frontier_with_stability(
             L += L_step
 
         if max_stable_L is not None:
-            θ_total = θ + θ_offset
+            θ_total = θ
             x_f = max_stable_L * np.cos(θ_total)
             y_f = max_stable_L * np.sin(θ_total)
             frontier_pts.append((x_f, y_f))
             frontier_lengths.append(max_stable_L)
-            frontier_thetas.append(θ)   # NEW
+            frontier_thetas.append(θ)   
 
     return (
         np.array(stable_pts),
@@ -62,28 +61,6 @@ def compute_frontier_with_stability(
         np.array(frontier_thetas)
     )
 
-# -------------------------------------------------------------------
-# Apply offsets (absolute or percentage)
-# -------------------------------------------------------------------
-def apply_offsets(
-    boom_mass, payload_mass, base_mass,
-    boom_offset=0.0, payload_offset=0.0, base_offset=0.0,
-    boom_pct=0.0, payload_pct=0.0, base_pct=0.0,
-    θ_offset=0.0, L_min_offset=0.0, L_max_offset=0.0,
-    L_min_pct=0.0, L_max_pct=0.0
-):
-    """
-    Returns updated masses, θ_offset, and L range after applying offsets
-    pct = fraction (0.1 = +10%)
-    """
-    boom_m    = boom_mass    * (1 + boom_pct)    + boom_offset
-    payload_m = payload_mass * (1 + payload_pct) + payload_offset
-    base_m    = base_mass    * (1 + base_pct)    + base_offset
-
-    L_min_new = L_min_offset + L_min_pct * 1.0  # we can add fraction later in main
-    L_max_new = L_max_offset + L_max_pct * 1.0  # placeholder
-
-    return boom_m, payload_m, base_m, θ_offset, L_min_new, L_max_new
 
 # -------------------------------------------------------------------
 # Interpolate the frontier curve
@@ -96,7 +73,6 @@ def interpolate_frontier(pts, num=500):
     Xi = np.linspace(X.min(), X.max(), num)
     Yi = np.interp(Xi, X, Y)
     return Xi, Yi
-
 
 # -------------------------------------------------------------------
 # Main
@@ -111,14 +87,28 @@ if __name__ == "__main__":
     beta  = 1.0
     d_base = 4.0
 
-    
+    boom_m_adj = boom_mass * (1 + 0.0) + 0.0
+    payload_m_adj = payload_mass * (1 + 0.0) + 0.0
+    base_m_adj = base_mass * (1 + 0.0) + 0.0
+
+    min_len = 20 * (1 + 0.0) + 0.0
+    max_len = 80 * (1 + 0.0) + 0.0
 
     stable_pts, unstable_pts, frontier_pts, frontier_lengths, frontier_thetas = compute_frontier_with_stability(
-            boom_mass, payload_mass, base_mass,
-            alpha, beta, d_base,
-            L_min=20.0, L_max=80.0, L_step=.5,
-            θ_range=np.linspace(0, 1.5, 600)
-        )
+        boom_m_adj, payload_m_adj, base_m_adj,
+        alpha, beta, d_base,
+        L_min=min_len, L_max=max_len, L_step=.2,
+        θ_range=np.linspace(0, 1.5 * (1 + 0.00) , 500) + 0.03,
+    )
+
+    stable_pts2, unstable_pts2, frontier_pts2, frontier_lengths2, frontier_thetas2 = compute_frontier_with_stability(
+        boom_mass, payload_mass, base_mass,
+        alpha, beta, d_base,
+        L_min=min_len, L_max=max_len, L_step=.2,
+        θ_range=np.linspace(0, 1.5, 500),
+    )
+    
+
 
     Xi, Yi = interpolate_frontier(frontier_pts)
 
@@ -172,8 +162,12 @@ if __name__ == "__main__":
     cbar = plt.colorbar(scatter)
     cbar.set_label("Boom Length (m)")
 
+    n = min(len(frontier_thetas), len(frontier_thetas2))
+    diff = frontier_thetas[:n] - frontier_thetas2[:n]
+
     plt.figure(figsize=(8,6))
-    plt.plot(frontier_lengths, frontier_thetas, '-o', markersize=4, color='blue')
+    plt.plot(frontier_lengths2, diff, '-o', markersize=4, color='blue')
+    # plt.plot(frontier_lengths2, frontier_thetas2, '-o', markersize=4, color='red')
     plt.title("Max Stable Boom Length vs Angle")
     plt.xlabel("Stable Boom Length (m)")
     plt.ylabel("Max Boom angle (rad)")
