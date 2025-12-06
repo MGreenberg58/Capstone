@@ -1,4 +1,3 @@
-# crane.py
 import pymunk
 import math
 

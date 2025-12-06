@@ -106,7 +106,7 @@ def draw_slider(label, value, min_val, max_val, rect, color=(80,140,220)):
     font = pygame.font.SysFont("Consolas", 16)
     screen.blit(font.render(f"{label}: {value:.1f} kg", True, (10,10,10)), (rect.x, rect.y - 24))
 
-def draw_ui(panel_rect, inputs, outputs, cg_px, pivot_px, boom_cg_px, base_cg_px):
+def draw_ui(panel_rect, inputs, outputs, cg_px, pivot_px, boom_cg_px, base_cg_px, BL_noise, BA_noise, PH_noise):
     x, y, w, h = panel_rect
     pygame.draw.rect(screen, (240,240,240), panel_rect)
     pygame.draw.rect(screen, (200,200,200), (x+6, y+6, w-12, h-12))
@@ -156,6 +156,13 @@ def draw_ui(panel_rect, inputs, outputs, cg_px, pivot_px, boom_cg_px, base_cg_px
     screen.blit(font.render(f"Net Moment: {(base_moment + boom_moment + payload_moment)/1000:.1f} kNm", True, (10,10,10)), (x + 18, label_y))
     label_y += 36
 
+    screen.blit(font.render(f"Measured BL diff(m): {BL_noise[0] - inputs.get('BL (m)'):.3f}", True, (10,10,10)), (x + 18, label_y))
+    label_y += 20
+    screen.blit(font.render(f"Measured BA diff(rad): {BA_noise[0] - inputs.get('BA (rad)'):.4f}", True, (10,10,10)), (x + 18, label_y))
+    label_y += 20
+    screen.blit(font.render(f"Measured PH diff(m): {PH_noise[0] - inputs.get('PH (m)'):.3f}", True, (10,10,10)), (x + 18, label_y))
+    label_y += 36
+
     # draw CG marker and pivot marker
     pygame.draw.circle(screen, (0,0,255), cg_px, 6) 
     pygame.draw.circle(screen, (0,0,0), pivot_px, 4)  
@@ -172,15 +179,39 @@ def draw_ui(panel_rect, inputs, outputs, cg_px, pivot_px, boom_cg_px, base_cg_px
     screen.blit(font.render("Base CG", True, (10,10,10)), (x + 72, y + h - 26))
     
 
-encoder_model = SensorNoiseModel(dt=1/FPS,
-                                sigma=0.001,
-                                bias_sigma=1e-4,    
-                                bias_tau=100.0,  
-                                quantization=0.0005, 
-                                delay=0.01,
-                                dim=1,
-                                seed=42)
-  
+boom_angle_sensor = SensorNoiseModel(
+                    dt=1/FPS,
+                    sigma=0.002,
+                    bias_sigma=0.001,
+                    bias_tau=1.0,
+                    quantization=0.001,
+                    delay=0.01,
+                    dim=1,
+                    seed=42
+                )
+
+boom_length_sensor = SensorNoiseModel(
+                    dt=1/FPS,
+                    sigma=0.02,
+                    bias_sigma=0.005,
+                    bias_tau=50.0,
+                    quantization=0.01,
+                    delay=0.01,
+                    dim=1,
+                    seed=0
+                )
+
+hoist_length_sensor = SensorNoiseModel(
+                    dt=1/FPS,
+                    sigma=0.02,
+                    bias_sigma=0.005,
+                    bias_tau=50.0,
+                    quantization=0.01,
+                    delay=0.01,
+                    dim=1,
+                    seed=1
+                )
+
 running = True
 dt = 1.0 / FPS
 while running:
@@ -281,12 +312,15 @@ while running:
 
     # FIS
     cg_pos = crane.compute_cg()
-    CGD_input = abs(cg_pos.x - crane.base_body.position.x)
     BL_input = crane.boom_length()
     PH_input = (crane.payload_body.position.y - crane.base_body.position.y)
     BA_input = crane.boom_bodies[0].angle - crane.base_body.angle
 
-    ca, ofb = fis.evaluate(BL_input, CGD_input, PH_input)
+    BL_noise = boom_length_sensor.measure(BL_input, t=sim_time)
+    PH_noise = hoist_length_sensor.measure(PH_input, t=sim_time)
+    BA_noise = boom_angle_sensor.measure(BA_input, t=sim_time)
+
+    # ca, ofb = fis.evaluate(BL_input, CGD_input, PH_input)
 
     space.step(dt)
 
@@ -332,9 +366,10 @@ while running:
 
     # draw FIS panel
     panel_rect = (WIDTH - 360, 20, 340, HEIGHT - 40)
-    inputs = {'BL (m)': BL_input, 'CGD (m)': CGD_input, 'PH (m)': PH_input}
-    outputs = {'ControlAdjustment': ca, 'OperatorFeedback': ofb}
-    draw_ui(panel_rect, inputs, outputs, to_pygame(cg_pos), to_pygame(pivot), to_pygame(boom_cg), to_pygame(crane.base_body.position))
+    inputs = {'BL (m)': BL_input, 'BA (rad)': BA_input, 'PH (m)': PH_input}
+    # outputs = {'ControlAdjustment': ca, 'OperatorFeedback': ofb}
+    draw_ui(panel_rect, inputs, {0: 0}, to_pygame(cg_pos), to_pygame(pivot), to_pygame(boom_cg), to_pygame(crane.base_body.position), BL_noise, BA_noise, PH_noise)
+
 
     # small instruction text
     font_sm = pygame.font.SysFont("Consolas", 16)

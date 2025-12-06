@@ -178,3 +178,41 @@ class SensorNoiseModel:
 
     def set_seed(self, seed: Optional[int]):
         self._rng = np.random.default_rng(seed)
+
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+if __name__ == "__main__":
+
+    FPS = 100
+    dt = 1/FPS
+
+    sensor = SensorNoiseModel(
+        dt=dt,
+        sigma=0.002,
+        bias_sigma=0.0005,
+        bias_tau=50.0,
+        quantization=0.001,
+        delay=0.01,
+        dim=1,
+        seed=42
+    )
+
+    true_angle = 0.0  # constant signal (rad)
+
+    t = []
+    z = []
+
+    for k in range(10000):
+        time = k * dt
+        meas = sensor.measure(true_angle, time)
+        t.append(time)
+        z.append(meas[0])
+
+    plt.plot(t, z)
+    plt.title("Boom Angle Sensor Output (Constant True Angle)")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Measured Angle (rad)")
+    plt.grid(True)
+    plt.show()
