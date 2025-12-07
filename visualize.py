@@ -92,7 +92,7 @@ if __name__ == "__main__":
     base_m_adj = base_mass * (1 + 0.0) + 0.0
 
     min_len = 20 * (1 + 0.0) + 0.0
-    max_len = 120 * (1 + 0.0) + 0.0
+    max_len = 100 * (1 + 0.0) + 0.0
 
     stable_pts, unstable_pts, frontier_pts, frontier_lengths, frontier_thetas = compute_frontier_with_stability(
         boom_m_adj, payload_m_adj, base_m_adj,
@@ -123,7 +123,7 @@ if __name__ == "__main__":
         c=Ls_stable,
         cmap="viridis",
         s=30,
-        linewidth=0.3,
+        linewidth=0.1,
         label="Stable"
     )
 
@@ -136,7 +136,7 @@ if __name__ == "__main__":
         facecolors=cmap(norm(Ls_unstable)),
         cmap="viridis",
         s=30,
-        linewidth=0.3,
+        linewidth=0.2,
         edgecolor='red',
         label="Unstable"
     )
@@ -154,7 +154,11 @@ if __name__ == "__main__":
     plt.ylabel("Boom Tip Y (m)")
     plt.axis("equal")
     plt.grid(True)
-    plt.legend()
+    legend = plt.legend(markerscale=2)
+
+    for handle in legend.legend_handles:
+        if hasattr(handle, "set_linewidths"):
+            handle.set_linewidths([1.5])
 
     # Colorbar for boom length
     cbar = plt.colorbar(scatter)
@@ -171,29 +175,16 @@ if __name__ == "__main__":
     plt.ylabel("Max Stable Boom Length (m)")
     plt.grid(True)
 
-    plt.figure(figsize=(8, 6))
-
-    plt.plot((frontier_thetas + 0.03) - frontier_thetas, frontier_lengths,'-o', markersize=3, color='red')
-    plt.plot((frontier_thetas * 1.01) - frontier_thetas, frontier_lengths,'-o', markersize=3, color='blue')
-    plt.title("Stability Frontier: Boom Angle vs Boom Length")
-    plt.xlabel("Boom Angle θ (rad)")
-    plt.ylabel("Max Stable Boom Length (m)")
-    plt.grid(True)
-
     plt.figure(figsize=(10,9))
-
-    # Plot stable points (light for context)
     plt.scatter(stable_pts[:,0], stable_pts[:,1], c='lightgray', s=20, label='Stable', alpha=0.5)
 
     from scipy.interpolate import interp1d
-    f = interp1d(frontier_thetas, frontier_lengths, kind='linear', fill_value='extrapolate')
+    f = interp1d(frontier_thetas, frontier_lengths, kind='linear', bounds_error=False, fill_value=np.nan)
 
-    # Small angle shift
-    delta_theta = 0.03
+    delta_theta = -0.03
     L_shifted = f(frontier_thetas + delta_theta)
-
-    # Difference
-    delta_L = frontier_lengths - L_shifted
+    delta_L = L_shifted - frontier_lengths
+    valid = ~np.isnan(delta_L)
 
     # Plot stable points (light gray) for context
     plt.scatter(stable_pts[:,0], stable_pts[:,1], c='lightgray', s=20, alpha=0.5, label='Stable')
@@ -203,7 +194,7 @@ if __name__ == "__main__":
     Yf = frontier_pts[:,1]
 
     scatter = plt.scatter(Xf, Yf, c=delta_L, cmap='coolwarm', s=40, edgecolor='black')
-    plt.colorbar(scatter, label='ΔL (m) for θ + 0.03 rad')
+    plt.colorbar(scatter, label='ΔBoom Length to be stable(m) for θ - 0.03 rad')
 
     plt.title("Stability Frontier Colored by ΔL with Small Angle Shift")
     plt.xlabel("Boom Tip X (m)")
@@ -211,5 +202,32 @@ if __name__ == "__main__":
     plt.axis("equal")
     plt.grid(True)
     plt.legend()
+
+    plt.figure(figsize=(8,6))
+    plt.plot(frontier_lengths[valid], delta_L[valid], '-o', markersize=4, color='red')
+    plt.title("Change in Boom Length in order to be stable if Boom Angle is mismeasured")
+    plt.xlabel("Boom Length (m)")
+    plt.ylabel("ΔBoom Length to be stable(m) for θ - 0.03 rad")
+    plt.grid(True)
+
+    θ_fine = np.linspace(frontier_thetas.min(), frontier_thetas.max(), 500)
+    L_frontier = f(θ_fine)
+
+    # Plot: Angle vs Max Stable Boom Length (like crane chart)
+    plt.figure(figsize=(10,6))
+    plt.fill_between(θ_fine, 0, L_frontier, color='lightgreen', alpha=0.5, label='Stable Region')
+    plt.plot(θ_fine, L_frontier, color='green', linewidth=2.2, label='Stability Frontier')
+
+    # Optionally, mark unstable points
+    unstable_thetas = np.array([pt[2] for pt in unstable_pts])  # Actually boom length is stored in pt[2]
+    unstable_angles = np.arctan2([pt[1] for pt in unstable_pts], [pt[0] for pt in unstable_pts])
+    plt.scatter(unstable_angles, unstable_thetas, color='red', s=10, alpha=0.4, label='Unstable Points')
+
+    plt.title("Crane Stability Chart: Boom Angle vs Max Stable Boom Length")
+    plt.xlabel("Boom Angle θ (rad)")
+    plt.ylabel("Max Stable Boom Length (m)")
+    plt.grid(True)
+    plt.legend()
+
     plt.show()
 
