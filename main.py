@@ -106,6 +106,34 @@ def draw_slider(label, value, min_val, max_val, rect, color=(80,140,220)):
     font = pygame.font.SysFont("Consolas", 16)
     screen.blit(font.render(f"{label}: {value:.1f} kg", True, (10,10,10)), (rect.x, rect.y - 24))
 
+def draw_lmi_bar(x, y, width, height, percent):
+    percent = max(0.0, min(1.0, percent))
+
+    if percent < 0.70:
+        color = (0, 180, 0)        # green
+        label = "SAFE"
+    elif percent < 0.80:
+        color = (250, 175, 0)      # yellow
+        label = "CAUTION"
+    # elif percent < 0.85:
+    #     color = (255, 140, 0)      # orange
+    #     label = "WARNING"
+    else:
+        color = (200, 0, 0)        # red
+        label = "DANGER"
+
+    # Outline
+    pygame.draw.rect(screen, (30, 30, 30), (x, y, width, height), 2)
+
+    # Filled bar
+    fill_w = int(width * percent)
+    pygame.draw.rect(screen, color, (x + 2, y + 2, fill_w - 4, height - 4))
+
+    # Text
+    font = pygame.font.SysFont("Consolas", 16, bold=True)
+    txt = font.render(f"{label}  {percent*100:5.1f}%", True, (10,10,10))
+    screen.blit(txt, (x + 10, y + height + 4))
+
 def draw_ui(panel_rect, inputs, outputs, cg_px, pivot_px, boom_cg_px, base_cg_px, BL_noise, BA_noise, PH_noise):
     x, y, w, h = panel_rect
     pygame.draw.rect(screen, (240,240,240), panel_rect)
@@ -126,35 +154,40 @@ def draw_ui(panel_rect, inputs, outputs, cg_px, pivot_px, boom_cg_px, base_cg_px
         screen.blit(font.render(f"{k}: {v:.2f}", True, (10,10,10)), (x + 18, label_y))
         label_y += 20
 
-    ca = outputs.get('ControlAdjustment', 0.0)
-    ofb = outputs.get('OperatorFeedback', 0.0)
-    bar_w = w - 40
-    bar_x = x + 18
+    # ca = outputs.get('ControlAdjustment', 0.0)
+    # ofb = outputs.get('OperatorFeedback', 0.0)
+    # bar_w = w - 40
+    # bar_x = x + 18
 
-    screen.blit(font.render("ControlAdjustment", True, (10,10,10)), (bar_x, label_y))
-    label_y += 16
-    pygame.draw.rect(screen, (180,180,180), (bar_x, label_y, bar_w, 18))
-    filled = int((ca / 3.0) * bar_w)
-    pygame.draw.rect(screen, (80,140,220), (bar_x, label_y, filled, 18))
-    screen.blit(font.render(f"{ca:.3f}", True, (10,10,10)), (bar_x + 8, label_y + 3))
-    label_y += 24
+    # screen.blit(font.render("ControlAdjustment", True, (10,10,10)), (bar_x, label_y))
+    # label_y += 16
+    # pygame.draw.rect(screen, (180,180,180), (bar_x, label_y, bar_w, 18))
+    # filled = int((ca / 3.0) * bar_w)
+    # pygame.draw.rect(screen, (80,140,220), (bar_x, label_y, filled, 18))
+    # screen.blit(font.render(f"{ca:.3f}", True, (10,10,10)), (bar_x + 8, label_y + 3))
+    # label_y += 24
 
-    screen.blit(font.render("OperatorFeedback", True, (10,10,10)), (bar_x, label_y))
-    label_y += 16
-    pygame.draw.rect(screen, (180,180,180), (bar_x, label_y, bar_w, 18))
-    filled2 = int((ofb / 3.0) * bar_w)
-    pygame.draw.rect(screen, (220,110,80), (bar_x, label_y, filled2, 18))
-    screen.blit(font.render(f"{ofb:.3f}", True, (10,10,10)), (bar_x + 8, label_y + 3))
-    label_y += 36
+    # screen.blit(font.render("OperatorFeedback", True, (10,10,10)), (bar_x, label_y))
+    # label_y += 16
+    # pygame.draw.rect(screen, (180,180,180), (bar_x, label_y, bar_w, 18))
+    # filled2 = int((ofb / 3.0) * bar_w)
+    # pygame.draw.rect(screen, (220,110,80), (bar_x, label_y, filled2, 18))
+    # screen.blit(font.render(f"{ofb:.3f}", True, (10,10,10)), (bar_x + 8, label_y + 3))
+    # label_y += 36
 
-    screen.blit(font.render(f"Boom Moment: {boom_moment/1000:.1f} kNm", True, (10,10,10)), (x + 18, label_y))
-    label_y += 20
-    screen.blit(font.render(f"Payload Moment: {payload_moment/1000:.1f} kNm", True, (10,10,10)), (x + 18, label_y))
-    label_y += 20
-    screen.blit(font.render(f"Base Moment: {base_moment/1000:.1f} kNm", True, (10,10,10)), (x + 18, label_y))
-    label_y += 20
+    tipping_moment = abs(boom_moment + payload_moment)
+    restoring_moment = abs(base_moment)
+
+    if restoring_moment < 1e-6:
+        lmi_percent = 1.0
+    else:
+        lmi_percent = tipping_moment / restoring_moment
+
+    draw_lmi_bar(x + 18, label_y, w - 36, 24, lmi_percent)
+    label_y += 46
+
     screen.blit(font.render(f"Net Moment: {(base_moment + boom_moment + payload_moment)/1000:.1f} kNm", True, (10,10,10)), (x + 18, label_y))
-    label_y += 36
+    label_y += 20
 
     screen.blit(font.render(f"Measured BL diff(m): {BL_noise[0] - inputs.get('BL (m)'):.3f}", True, (10,10,10)), (x + 18, label_y))
     label_y += 20
@@ -193,7 +226,7 @@ boom_angle_sensor = SensorNoiseModel(
 boom_length_sensor = SensorNoiseModel(
                     dt=1/FPS,
                     sigma=0.02,
-                    bias_sigma=0.005,
+                    bias_sigma=0.004,
                     bias_tau=50.0,
                     quantization=0.01,
                     delay=0.01,
@@ -204,7 +237,7 @@ boom_length_sensor = SensorNoiseModel(
 hoist_length_sensor = SensorNoiseModel(
                     dt=1/FPS,
                     sigma=0.02,
-                    bias_sigma=0.005,
+                    bias_sigma=0.003,
                     bias_tau=50.0,
                     quantization=0.01,
                     delay=0.01,
@@ -266,7 +299,7 @@ while running:
     error = boom_target_angle - rel_angle
     # print(error)
     
-    desired_rate = k_p * (boom_target_angle - rel_angle) - k_d * rel_ang_vel
+    desired_rate = np.clip(k_p * (boom_target_angle - rel_angle) - k_d * rel_ang_vel, -0.01, 0.01)
 
     if keys[pygame.K_e]:
         boom_target_angle += angle_speed

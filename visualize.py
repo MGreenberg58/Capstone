@@ -92,24 +92,22 @@ if __name__ == "__main__":
     base_m_adj = base_mass * (1 + 0.0) + 0.0
 
     min_len = 20 * (1 + 0.0) + 0.0
-    max_len = 80 * (1 + 0.0) + 0.0
+    max_len = 120 * (1 + 0.0) + 0.0
 
     stable_pts, unstable_pts, frontier_pts, frontier_lengths, frontier_thetas = compute_frontier_with_stability(
         boom_m_adj, payload_m_adj, base_m_adj,
         alpha, beta, d_base,
         L_min=min_len, L_max=max_len, L_step=.2,
-        θ_range=np.linspace(0, 1.5 * (1 + 0.00) , 500) + 0.03,
+        θ_range=np.linspace(-0.05, 1.57 * (1 + 0.00) , 200) + 0.0,
     )
 
-    stable_pts2, unstable_pts2, frontier_pts2, frontier_lengths2, frontier_thetas2 = compute_frontier_with_stability(
-        boom_mass, payload_mass, base_mass,
-        alpha, beta, d_base,
-        L_min=min_len, L_max=max_len, L_step=.2,
-        θ_range=np.linspace(0, 1.5, 500),
-    )
+    # stable_pts2, unstable_pts2, frontier_pts2, frontier_lengths2, frontier_thetas2 = compute_frontier_with_stability(
+    #     boom_mass, payload_mass, base_mass,
+    #     alpha, beta, d_base,
+    #     L_min=min_len, L_max=max_len, L_step=.2,
+    #     θ_range=np.linspace(0, 1.57, 200),
+    # )
     
-
-
     Xi, Yi = interpolate_frontier(frontier_pts)
 
     # ------------------ PLOT -------------------
@@ -162,15 +160,56 @@ if __name__ == "__main__":
     cbar = plt.colorbar(scatter)
     cbar.set_label("Boom Length (m)")
 
-    n = min(len(frontier_thetas), len(frontier_thetas2))
-    diff = frontier_thetas[:n] - frontier_thetas2[:n]
+    plt.figure(figsize=(8, 6))
 
-    plt.figure(figsize=(8,6))
-    plt.plot(frontier_lengths2, diff, '-o', markersize=4, color='blue')
-    # plt.plot(frontier_lengths2, frontier_thetas2, '-o', markersize=4, color='red')
-    plt.title("Max Stable Boom Length vs Angle")
-    plt.xlabel("Stable Boom Length (m)")
-    plt.ylabel("Max Boom angle (rad)")
+    plt.plot(frontier_thetas, frontier_lengths,'-o', markersize=3, color='red')
+    plt.plot(frontier_thetas + 0.03, frontier_lengths,'-o', markersize=3, color='green')
+    plt.plot(frontier_thetas * 1.01, frontier_lengths,'-o', markersize=3, color='blue')
+
+    plt.title("Stability Frontier: Boom Angle vs Boom Length")
+    plt.xlabel("Boom Angle θ (rad)")
+    plt.ylabel("Max Stable Boom Length (m)")
     plt.grid(True)
+
+    plt.figure(figsize=(8, 6))
+
+    plt.plot((frontier_thetas + 0.03) - frontier_thetas, frontier_lengths,'-o', markersize=3, color='red')
+    plt.plot((frontier_thetas * 1.01) - frontier_thetas, frontier_lengths,'-o', markersize=3, color='blue')
+    plt.title("Stability Frontier: Boom Angle vs Boom Length")
+    plt.xlabel("Boom Angle θ (rad)")
+    plt.ylabel("Max Stable Boom Length (m)")
+    plt.grid(True)
+
+    plt.figure(figsize=(10,9))
+
+    # Plot stable points (light for context)
+    plt.scatter(stable_pts[:,0], stable_pts[:,1], c='lightgray', s=20, label='Stable', alpha=0.5)
+
+    from scipy.interpolate import interp1d
+    f = interp1d(frontier_thetas, frontier_lengths, kind='linear', fill_value='extrapolate')
+
+    # Small angle shift
+    delta_theta = 0.03
+    L_shifted = f(frontier_thetas + delta_theta)
+
+    # Difference
+    delta_L = frontier_lengths - L_shifted
+
+    # Plot stable points (light gray) for context
+    plt.scatter(stable_pts[:,0], stable_pts[:,1], c='lightgray', s=20, alpha=0.5, label='Stable')
+
+    # Frontier points only, colored by ΔL
+    Xf = frontier_pts[:,0]
+    Yf = frontier_pts[:,1]
+
+    scatter = plt.scatter(Xf, Yf, c=delta_L, cmap='coolwarm', s=40, edgecolor='black')
+    plt.colorbar(scatter, label='ΔL (m) for θ + 0.03 rad')
+
+    plt.title("Stability Frontier Colored by ΔL with Small Angle Shift")
+    plt.xlabel("Boom Tip X (m)")
+    plt.ylabel("Boom Tip Y (m)")
+    plt.axis("equal")
+    plt.grid(True)
+    plt.legend()
     plt.show()
 
