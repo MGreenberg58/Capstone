@@ -92,14 +92,16 @@ if __name__ == "__main__":
     payload_m_adj = payload_mass * (1 + 0.0) + 0.0
     base_m_adj = base_mass * (1 + 0.0) + 0.0
 
-    min_len = 20 * (1 + 0.0) + 0.0
-    max_len = 100 * (1 + 0.0) + 0.0
+    min_len = 10 * (1 + 0.0) + 0.0
+    max_len = 60 * (1 + 0.0) + 0.0
+
+    ang_range = np.linspace(-0.02, 1.57 * (1 + 0.00) , 200) + 0.0
 
     stable_pts, unstable_pts, frontier_pts, frontier_lengths, frontier_thetas = compute_frontier_with_stability(
         boom_m_adj, payload_m_adj, base_m_adj,
         alpha, beta, d_base,
         L_min=min_len, L_max=max_len, L_step=.2,
-        θ_range=np.linspace(-0.05, 1.57 * (1 + 0.00) , 200) + 0.0,
+        θ_range=ang_range,
     )
 
     # stable_pts2, unstable_pts2, frontier_pts2, frontier_lengths2, frontier_thetas2 = compute_frontier_with_stability(
@@ -167,12 +169,12 @@ if __name__ == "__main__":
 
     plt.figure(figsize=(8, 6))
 
-    plt.plot(frontier_thetas, frontier_lengths,'-o', markersize=3, color='red')
-    plt.plot(frontier_thetas + 0.03, frontier_lengths,'-o', markersize=3, color='green')
-    plt.plot(frontier_thetas * 1.01, frontier_lengths,'-o', markersize=3, color='blue')
+    plt.plot(np.rad2deg(frontier_thetas), frontier_lengths,'-o', markersize=3, color='red')
+    plt.plot(np.rad2deg(frontier_thetas + 0.03), frontier_lengths,'-o', markersize=3, color='green')
+    plt.plot(np.rad2deg(frontier_thetas * 1.01), frontier_lengths,'-o', markersize=3, color='blue')
 
     plt.title("Stability Frontier: Boom Angle vs Boom Length")
-    plt.xlabel("Boom Angle θ (rad)")
+    plt.xlabel("Boom Angle θ (deg)")
     plt.ylabel("Max Stable Boom Length (m)")
     plt.grid(True)
 
@@ -182,65 +184,56 @@ if __name__ == "__main__":
     from scipy.interpolate import interp1d
     f = interp1d(frontier_thetas, frontier_lengths, kind='linear', bounds_error=False, fill_value=np.nan)
 
-    delta_theta = -0.03
+    delta_theta = -np.deg2rad(1)
     L_shifted = f(frontier_thetas + delta_theta)
     delta_L = L_shifted - frontier_lengths
     valid = ~np.isnan(delta_L)
 
-    # Plot stable points (light gray) for context
     plt.scatter(stable_pts[:,0], stable_pts[:,1], c='lightgray', s=20, alpha=0.5, label='Stable')
-
-    # Frontier points only, colored by ΔL
     Xf = frontier_pts[:,0]
     Yf = frontier_pts[:,1]
 
     scatter = plt.scatter(Xf, Yf, c=delta_L, cmap='coolwarm_r', s=40, edgecolor='black')
-    plt.colorbar(scatter, label='ΔBoom Length to be stable(m) for θ - 0.03 rad')
+    plt.colorbar(scatter, label='ΔBoom Length to be stable(m) for θ - 1 deg')
 
-    plt.title("Stability Frontier Colored by ΔL with Small Angle Shift")
+    plt.title("Stability Frontier Colored by ΔL needed after angle shift")
     plt.xlabel("Boom Tip X (m)")
     plt.ylabel("Boom Tip Y (m)")
     plt.axis("equal")
     plt.grid(True)
 
+
+
     plt.figure(figsize=(8,6))
     plt.plot(frontier_lengths[valid], delta_L[valid], '-o', markersize=4, color='red')
     plt.title("Change in Boom Length in order to be stable if Boom Angle is mismeasured")
     plt.xlabel("Boom Length (m)")
-    plt.ylabel("ΔBoom Length to be stable(m) for θ - 0.03 rad")
+    plt.ylabel("ΔBoom Length to be stable(m) for θ - 1 deg")
     plt.grid(True)
 
-    # -------------------- Δθ plot --------------------
-    # Interpolate frontier as L → θ to get required angle for a given length
-    f_theta_vs_L = interp1d(frontier_lengths, frontier_thetas, kind='linear', bounds_error=False, fill_value=np.nan)
 
-    # Example: small boom length increase
-    L_shifted_theta = frontier_lengths + 0.1  # could also use a relative shift, e.g., *1.01
+    f_theta_vs_L = interp1d(frontier_lengths, frontier_thetas, kind='linear', bounds_error=False, fill_value=np.nan)
+    L_shifted_theta = frontier_lengths + 0.1
     delta_theta_needed = f_theta_vs_L(L_shifted_theta) - frontier_thetas
     valid_theta = ~np.isnan(delta_theta_needed)
 
-    # Plot Δθ vs boom length
     plt.figure(figsize=(8,6))
-    plt.plot(frontier_lengths[valid_theta], delta_theta_needed[valid_theta], '-o', markersize=4, color='blue')
-    plt.title("Change in Boom Angle to remain stable if Boom Length is mismeasured")
+    plt.plot(frontier_lengths[valid_theta], np.rad2deg(delta_theta_needed[valid_theta]), '-o', markersize=4, color='blue')
+    plt.title("Change in Boom Angle to remain stable if boom length is mismeasured")
     plt.xlabel("Boom Length (m)")
-    plt.ylabel("Δθ (rad) needed for stability")
+    plt.ylabel("Δθ (deg) needed for stability")
     plt.grid(True)
-
-
 
 
 
     θ_fine = np.linspace(frontier_thetas.min(), frontier_thetas.max(), 500)
     L_frontier = f(θ_fine)
 
-    # Plot: Angle vs Max Stable Boom Length (like crane chart)
     plt.figure(figsize=(10,6))
     plt.fill_between(θ_fine, 0, L_frontier, color='lightgreen', alpha=0.5, label='Stable Region')
     plt.plot(θ_fine, L_frontier, color='green', linewidth=2.2, label='Stability Frontier')
 
-    # Optionally, mark unstable points
-    unstable_thetas = np.array([pt[2] for pt in unstable_pts])  # Actually boom length is stored in pt[2]
+    unstable_thetas = np.array([pt[2] for pt in unstable_pts])
     unstable_angles = np.arctan2([pt[1] for pt in unstable_pts], [pt[0] for pt in unstable_pts])
     plt.scatter(unstable_angles, unstable_thetas, color='red', s=10, alpha=0.4, label='Unstable Points')
 
@@ -250,23 +243,18 @@ if __name__ == "__main__":
     plt.grid(True)
     plt.legend()
 
+    plt.figure(figsize=(10,9))
     f = interp1d(frontier_thetas, frontier_lengths, kind='linear', bounds_error=False, fill_value=np.nan)
 
     delta_theta = -0.03
-
-    # Compute angles of stable points
     stable_angles = np.arctan2(stable_pts[:,1], stable_pts[:,0])
-
-    # Compute ΔL for each stable point
     L_shifted = f(stable_angles + delta_theta)
-    delta_L = L_shifted - stable_pts[:,2]  # ΔL relative to frontier at shifted angle
+    delta_L = L_shifted - stable_pts[:,2]  
     valid = ~np.isnan(delta_L)
 
-    # Plot stable points (light gray) for context
-    plt.figure(figsize=(10,9))
 
     vmin = delta_L[valid].min()  # min value (red)
-    vcenter = 20              # value that maps to yellow
+    vcenter = 1              # value that maps to yellow
     vmax = delta_L[valid].max()  # max value (green)
 
     norm = TwoSlopeNorm(vmin=vmin, vcenter=vcenter, vmax=vmax)
@@ -281,10 +269,10 @@ if __name__ == "__main__":
     
     num_mid_ticks = 3
     mid_ticks = np.linspace(vmin, vmax, num_mid_ticks + 2)
-    plt.colorbar(scatter, label='ΔBoom Length to be at stability frontier (m) for θ - 0.03 rad', ticks=mid_ticks)
+    plt.colorbar(scatter, label='ΔBoom Length to be at stability frontier for θ - 1 deg', ticks=mid_ticks)
 
 
-    plt.title("Stable Points Colored by ΔL with Small Angle Shift")
+    plt.title("Stable Points Colored by ΔL for 1 deg angle decrease")
     plt.xlabel("Boom Tip X (m)")
     plt.ylabel("Boom Tip Y (m)")
     plt.axis("equal")
@@ -300,7 +288,7 @@ if __name__ == "__main__":
     valid = ~np.isnan(delta_theta_needed)
 
     vmin = delta_theta_needed[valid].min()
-    vcenter = 0
+    vcenter = -0.1
     vmax = delta_theta_needed[valid].max()
 
     norm = TwoSlopeNorm(vmin=vmin, vcenter=vcenter, vmax=vmax)
@@ -308,7 +296,7 @@ if __name__ == "__main__":
     scatter = plt.scatter(
         stable_pts[valid,0],
         stable_pts[valid,1],
-        c=delta_theta_needed[valid],
+        c=np.rad2deg(delta_theta_needed[valid]),
         cmap='RdYlGn_r',
         norm=norm,
         s=40
@@ -320,9 +308,47 @@ if __name__ == "__main__":
 
     plt.axis("equal")
     plt.grid(True)
-    plt.title("Stable Points Colored by Δθ Needed After +0.1 m Boom Length")
+    plt.title("Stable Points Colored by Δθ for 0.1m boom length increase")
     plt.xlabel("Boom Tip X (m)")
     plt.ylabel("Boom Tip Y (m)")
+
+    plt.figure(figsize=(10,9))
+    stable_pts2, unstable_pts2, frontier_pts2, frontier_lengths2, frontier_thetas2 = compute_frontier_with_stability(
+        boom_mass, payload_mass * 1.05, base_mass,
+        alpha, beta, d_base,
+        min_len, max_len, 0.2,
+        ang_range
+    )
+
+    f_heavier = interp1d(frontier_thetas, frontier_lengths2, kind='linear', bounds_error=False, fill_value=np.nan)
+
+    stable_angles = np.arctan2(stable_pts[:,1], stable_pts[:,0])
+    L_heavier = f_heavier(stable_angles)
+    delta_L = L_heavier - stable_pts[:,2]
+    valid = ~np.isnan(delta_L)
+
+    vmin = delta_L[valid].min()
+    vcenter = 2   
+    vmax = delta_L[valid].max()
+
+    norm = TwoSlopeNorm(vmin=vmin, vcenter=vcenter, vmax=vmax)
+
+    scatter = plt.scatter(
+        stable_pts[valid,0],
+        stable_pts[valid,1],
+        c=delta_L[valid],
+        cmap='RdYlGn',
+        norm=norm,
+        s=40
+    )
+
+    plt.colorbar(scatter, label='ΔBoom Length needed for +5% payload weight')
+
+    plt.title("Stable Points Colored by ΔL for +5% Payload Mass")
+    plt.xlabel("Boom Tip X (m)")
+    plt.ylabel("Boom Tip Y (m)")
+    plt.axis("equal")
+    plt.grid(True)
 
     plt.show()
 
