@@ -1,19 +1,15 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap, BoundaryNorm, TwoSlopeNorm
+from scipy.interpolate import interp1d
 
 g = 9.81
 
-# -------------------------------------------------------------------
-# Compute stability frontier by sweeping L for each θ
-# Keep BOTH stable and unstable points
-# -------------------------------------------------------------------
 def compute_frontier_with_stability(
     boom_mass, payload_mass, base_mass,
     alpha, beta, d_base,
     L_min=15.0, L_max=80.0, L_step=3,
-    θ_range=np.linspace(0, 1.5, 100)
-):
+    θ_range=np.linspace(0, 1.5, 100)):
     stable_pts = []
     unstable_pts = []
     frontier_pts = []
@@ -63,21 +59,6 @@ def compute_frontier_with_stability(
     )
 
 
-# -------------------------------------------------------------------
-# Interpolate the frontier curve
-# -------------------------------------------------------------------
-def interpolate_frontier(pts, num=500):
-    pts = pts[np.argsort(pts[:,0])]
-    X = pts[:,0]
-    Y = pts[:,1]
-
-    Xi = np.linspace(X.min(), X.max(), num)
-    Yi = np.interp(Xi, X, Y)
-    return Xi, Yi
-
-# -------------------------------------------------------------------
-# Main
-# -------------------------------------------------------------------
 if __name__ == "__main__":
 
     boom_mass    = 8000.0
@@ -95,7 +76,7 @@ if __name__ == "__main__":
     min_len = 10 * (1 + 0.0) + 0.0
     max_len = 60 * (1 + 0.0) + 0.0
 
-    ang_range = np.linspace(-0.02, 1.57 * (1 + 0.00) , 200) + 0.0
+    ang_range = np.linspace(-0.02, np.deg2rad(90) * (1 + 0.00) , 200) + 0.0
 
     stable_pts, unstable_pts, frontier_pts, frontier_lengths, frontier_thetas = compute_frontier_with_stability(
         boom_m_adj, payload_m_adj, base_m_adj,
@@ -104,23 +85,12 @@ if __name__ == "__main__":
         θ_range=ang_range,
     )
 
-    # stable_pts2, unstable_pts2, frontier_pts2, frontier_lengths2, frontier_thetas2 = compute_frontier_with_stability(
-    #     boom_mass, payload_mass, base_mass,
-    #     alpha, beta, d_base,
-    #     L_min=min_len, L_max=max_len, L_step=.2,
-    #     θ_range=np.linspace(0, 1.57, 200),
-    # )
-    
-    Xi, Yi = interpolate_frontier(frontier_pts)
-
-    # ------------------ PLOT -------------------
+    # Rainbow stability envelope plot
     plt.figure(figsize=(10,9))
-
-    # Normalize L values for colormap
     Ls_stable = stable_pts[:,2]
     Ls_unstable = unstable_pts[:,2]
 
-    # Stable filled circles
+    # stable
     scatter = plt.scatter(
         stable_pts[:,0], stable_pts[:,1],
         c=Ls_stable,
@@ -129,11 +99,10 @@ if __name__ == "__main__":
         linewidth=0.1,
         label="Stable"
     )
-
     cmap = plt.get_cmap("viridis")
     norm = plt.Normalize(min(Ls_stable.min(), Ls_unstable.min()), max(Ls_stable.max(), Ls_unstable.max()))
 
-    # Unstable hollow circles
+    # unstable
     plt.scatter(
         unstable_pts[:,0], unstable_pts[:,1],
         facecolors=cmap(norm(Ls_unstable)),
@@ -144,29 +113,42 @@ if __name__ == "__main__":
         label="Unstable"
     )
 
-    # # Frontier curve (smooth)
-    # plt.plot(Xi, Yi, color="yellow", linewidth=2.2,
-    #          label="Stability Frontier (Max L per θ)")
-
-    # Formatting
     plt.axhline(0, color='black', linewidth=1)
     plt.axvline(0, color='black', linewidth=1)
-
     plt.title("Stability Frontier Colored by Boom Length")
     plt.xlabel("Boom Tip X (m)")
     plt.ylabel("Boom Tip Y (m)")
     plt.axis("equal")
     plt.grid(True)
-    legend = plt.legend(markerscale=2)
 
+    legend = plt.legend(markerscale=2)
     for handle in legend.legend_handles:
         if hasattr(handle, "set_linewidths"):
             handle.set_linewidths([1.5])
 
-    # Colorbar for boom length
     cbar = plt.colorbar(scatter)
     cbar.set_label("Boom Length (m)")
 
+    # Non-rainbow stability
+    plt.figure(figsize=(10,6))
+    f = interp1d(frontier_thetas, frontier_lengths, kind='linear', bounds_error=False, fill_value=np.nan)
+    θ_fine = np.linspace(frontier_thetas.min(), frontier_thetas.max(), 500)
+    L_frontier = f(θ_fine)
+
+    plt.fill_between(np.rad2deg(θ_fine), 0, L_frontier, color='lightgreen', alpha=0.5, label='Stable Region')
+    plt.plot(np.rad2deg(θ_fine), L_frontier, color='green', linewidth=2.2, label='Stability Frontier')
+
+    unstable_thetas = np.array([pt[2] for pt in unstable_pts])
+    unstable_angles = np.arctan2([pt[1] for pt in unstable_pts], [pt[0] for pt in unstable_pts])
+    plt.scatter(np.rad2deg(unstable_angles), unstable_thetas, color='red', s=10, alpha=0.4, label='Unstable Points')
+
+    plt.title("Crane Stability Chart: Boom Angle vs Max Stable Boom Length")
+    plt.xlabel("Boom Angle θ (rad)")
+    plt.ylabel("Max Stable Boom Length (m)")
+    plt.grid(True)
+    plt.legend()
+
+    # Shift comparison plot
     plt.figure(figsize=(8, 6))
 
     plt.plot(np.rad2deg(frontier_thetas), frontier_lengths,'-o', markersize=3, color='red')
@@ -178,10 +160,11 @@ if __name__ == "__main__":
     plt.ylabel("Max Stable Boom Length (m)")
     plt.grid(True)
 
+
+    # red/blue frontier delta L plot
     plt.figure(figsize=(10,9))
     plt.scatter(stable_pts[:,0], stable_pts[:,1], c='lightgray', s=20, label='Stable', alpha=0.5)
 
-    from scipy.interpolate import interp1d
     f = interp1d(frontier_thetas, frontier_lengths, kind='linear', bounds_error=False, fill_value=np.nan)
 
     delta_theta = -np.deg2rad(1)
@@ -203,7 +186,7 @@ if __name__ == "__main__":
     plt.grid(True)
 
 
-
+    # Delta L plot
     plt.figure(figsize=(8,6))
     plt.plot(frontier_lengths[valid], delta_L[valid], '-o', markersize=4, color='red')
     plt.title("Change in Boom Length in order to be stable if Boom Angle is mismeasured")
@@ -212,12 +195,13 @@ if __name__ == "__main__":
     plt.grid(True)
 
 
+    # Delta Theta plot
+    plt.figure(figsize=(8,6))
     f_theta_vs_L = interp1d(frontier_lengths, frontier_thetas, kind='linear', bounds_error=False, fill_value=np.nan)
     L_shifted_theta = frontier_lengths + 0.1
     delta_theta_needed = f_theta_vs_L(L_shifted_theta) - frontier_thetas
     valid_theta = ~np.isnan(delta_theta_needed)
 
-    plt.figure(figsize=(8,6))
     plt.plot(frontier_lengths[valid_theta], np.rad2deg(delta_theta_needed[valid_theta]), '-o', markersize=4, color='blue')
     plt.title("Change in Boom Angle to remain stable if boom length is mismeasured")
     plt.xlabel("Boom Length (m)")
@@ -225,24 +209,7 @@ if __name__ == "__main__":
     plt.grid(True)
 
 
-
-    θ_fine = np.linspace(frontier_thetas.min(), frontier_thetas.max(), 500)
-    L_frontier = f(θ_fine)
-
-    plt.figure(figsize=(10,6))
-    plt.fill_between(θ_fine, 0, L_frontier, color='lightgreen', alpha=0.5, label='Stable Region')
-    plt.plot(θ_fine, L_frontier, color='green', linewidth=2.2, label='Stability Frontier')
-
-    unstable_thetas = np.array([pt[2] for pt in unstable_pts])
-    unstable_angles = np.arctan2([pt[1] for pt in unstable_pts], [pt[0] for pt in unstable_pts])
-    plt.scatter(unstable_angles, unstable_thetas, color='red', s=10, alpha=0.4, label='Unstable Points')
-
-    plt.title("Crane Stability Chart: Boom Angle vs Max Stable Boom Length")
-    plt.xlabel("Boom Angle θ (rad)")
-    plt.ylabel("Max Stable Boom Length (m)")
-    plt.grid(True)
-    plt.legend()
-
+    # Rainbow Delta L
     plt.figure(figsize=(10,9))
     f = interp1d(frontier_thetas, frontier_lengths, kind='linear', bounds_error=False, fill_value=np.nan)
 
@@ -252,11 +219,9 @@ if __name__ == "__main__":
     delta_L = L_shifted - stable_pts[:,2]  
     valid = ~np.isnan(delta_L)
 
-
     vmin = delta_L[valid].min()  # min value (red)
     vcenter = 1              # value that maps to yellow
     vmax = delta_L[valid].max()  # max value (green)
-
     norm = TwoSlopeNorm(vmin=vmin, vcenter=vcenter, vmax=vmax)
 
     scatter = plt.scatter(
@@ -271,7 +236,6 @@ if __name__ == "__main__":
     mid_ticks = np.linspace(vmin, vmax, num_mid_ticks + 2)
     plt.colorbar(scatter, label='ΔBoom Length to be at stability frontier for θ - 1 deg', ticks=mid_ticks)
 
-
     plt.title("Stable Points Colored by ΔL for 1 deg angle decrease")
     plt.xlabel("Boom Tip X (m)")
     plt.ylabel("Boom Tip Y (m)")
@@ -279,10 +243,9 @@ if __name__ == "__main__":
     plt.grid(True)
     plt.legend()
 
-
+    # Rainbow delta theta
     plt.figure(figsize=(10,9))
     f = interp1d(frontier_lengths, frontier_thetas, kind='linear', bounds_error=False, fill_value=np.nan)
-
     L_shifted = stable_pts[:,2] + 0.1
     delta_theta_needed = f(L_shifted) - np.arctan2(stable_pts[:,1], stable_pts[:,0])
     valid = ~np.isnan(delta_theta_needed)
@@ -312,6 +275,7 @@ if __name__ == "__main__":
     plt.xlabel("Boom Tip X (m)")
     plt.ylabel("Boom Tip Y (m)")
 
+    # Rainbow delta mass
     plt.figure(figsize=(10,9))
     stable_pts2, unstable_pts2, frontier_pts2, frontier_lengths2, frontier_thetas2 = compute_frontier_with_stability(
         boom_mass, payload_mass * 1.05, base_mass,
