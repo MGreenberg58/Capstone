@@ -76,14 +76,21 @@ if __name__ == "__main__":
     min_len = 10 * (1 + 0.0) + 0.0
     max_len = 60 * (1 + 0.0) + 0.0
 
-    ang_range = np.linspace(-0.02, np.deg2rad(90) * (1 + 0.00) , 200) + 0.0
+    ang_range = np.linspace(-0.02, np.deg2rad(90) * (1 + 0.00) , 100) + 0.0
 
     stable_pts, unstable_pts, frontier_pts, frontier_lengths, frontier_thetas = compute_frontier_with_stability(
         boom_m_adj, payload_m_adj, base_m_adj,
         alpha, beta, d_base,
-        L_min=min_len, L_max=max_len, L_step=.2,
+        L_min=min_len, L_max=max_len, L_step=0.1,
         θ_range=ang_range,
     )
+
+    # stable_pts2, unstable_pts2, frontier_pts2, frontier_lengths2, frontier_thetas2 = compute_frontier_with_stability(
+    #     boom_m_adj, payload_m_adj * 1.176, base_m_adj,
+    #     alpha, beta, d_base,
+    #     L_min=min_len, L_max=max_len, L_step=0.5,
+    #     θ_range=ang_range,
+    # )
 
     # Rainbow stability envelope plot
     plt.figure(figsize=(10,9))
@@ -108,7 +115,7 @@ if __name__ == "__main__":
         facecolors=cmap(norm(Ls_unstable)),
         cmap="viridis",
         s=30,
-        linewidth=0.2,
+        linewidth=0.4,
         edgecolor='red',
         label="Unstable"
     )
@@ -208,6 +215,25 @@ if __name__ == "__main__":
     plt.ylabel("Δθ (deg) needed for stability")
     plt.grid(True)
 
+    # Delta mass plot
+    plt.figure(figsize=(8,6))
+    stable_pts2, unstable_pts2, frontier_pts2, frontier_lengths2, frontier_thetas2 = compute_frontier_with_stability(
+        boom_mass, payload_mass * 1.05, base_mass,
+        alpha, beta, d_base,
+        min_len, max_len, 0.1,
+        ang_range
+    )
+
+    f_heavier = interp1d(frontier_thetas, frontier_lengths2, kind='linear', bounds_error=False, fill_value=np.nan)
+    L_heavier = f_heavier(frontier_thetas)
+    delta_L = L_heavier - frontier_lengths
+    valid = ~np.isnan(delta_L)
+
+    plt.plot(frontier_lengths[valid], delta_L[valid], '-o', markersize=4, color='blue')
+    plt.title("Change in Boom Angle to remain stable if boom length is mismeasured")
+    plt.xlabel("Boom Length (m)")
+    plt.ylabel("Δθ (deg) needed for stability")
+    plt.grid(True)
 
     # Rainbow Delta L
     plt.figure(figsize=(10,9))
@@ -246,7 +272,7 @@ if __name__ == "__main__":
     # Rainbow delta theta
     plt.figure(figsize=(10,9))
     f = interp1d(frontier_lengths, frontier_thetas, kind='linear', bounds_error=False, fill_value=np.nan)
-    L_shifted = stable_pts[:,2] + 0.1
+    L_shifted = stable_pts[:,2] + 0.2
     delta_theta_needed = f(L_shifted) - np.arctan2(stable_pts[:,1], stable_pts[:,0])
     valid = ~np.isnan(delta_theta_needed)
 
@@ -267,23 +293,16 @@ if __name__ == "__main__":
 
     num_mid_ticks = 3
     mid_ticks = np.linspace(vmin, vmax, num_mid_ticks + 2) 
-    plt.colorbar(scatter, label='Δθ (rad) needed to be at stability frontier boom length + 0.1m', ticks=mid_ticks)
+    plt.colorbar(scatter, label='Δθ deg needed to be at stability frontier boom length + 0.2m', ticks=mid_ticks)
 
     plt.axis("equal")
     plt.grid(True)
-    plt.title("Stable Points Colored by Δθ for 0.1m boom length increase")
+    plt.title("Stable Points Colored by Δθ for 0.2m boom length increase")
     plt.xlabel("Boom Tip X (m)")
     plt.ylabel("Boom Tip Y (m)")
 
     # Rainbow delta mass
     plt.figure(figsize=(10,9))
-    stable_pts2, unstable_pts2, frontier_pts2, frontier_lengths2, frontier_thetas2 = compute_frontier_with_stability(
-        boom_mass, payload_mass * 1.05, base_mass,
-        alpha, beta, d_base,
-        min_len, max_len, 0.2,
-        ang_range
-    )
-
     f_heavier = interp1d(frontier_thetas, frontier_lengths2, kind='linear', bounds_error=False, fill_value=np.nan)
 
     stable_angles = np.arctan2(stable_pts[:,1], stable_pts[:,0])
@@ -292,7 +311,7 @@ if __name__ == "__main__":
     valid = ~np.isnan(delta_L)
 
     vmin = delta_L[valid].min()
-    vcenter = 2   
+    vcenter = 1   
     vmax = delta_L[valid].max()
 
     norm = TwoSlopeNorm(vmin=vmin, vcenter=vcenter, vmax=vmax)
