@@ -246,11 +246,12 @@ if __name__ == "__main__":
     # Delta Theta plot
     plt.figure(figsize=(8,6))
     f_theta_vs_L = interp1d(frontier_lengths, frontier_thetas, kind='linear', bounds_error=False, fill_value=np.nan)
-    L_shifted_theta = frontier_lengths + 0.1
-    delta_theta_needed = f_theta_vs_L(L_shifted_theta) - frontier_thetas
-    valid_theta = ~np.isnan(delta_theta_needed)
+    delta_L = 0.1
+    theta_shifted = f_theta_vs_L(frontier_lengths + delta_L)
+    delta_theta = theta_shifted - frontier_thetas
+    valid_theta = ~np.isnan(delta_theta)
 
-    plt.plot(frontier_lengths[valid_theta], np.rad2deg(delta_theta_needed[valid_theta]), '-o', markersize=4, color='blue')
+    plt.plot(frontier_lengths[valid_theta], np.rad2deg(delta_theta[valid_theta]), '-o', markersize=4, color='blue')
     plt.title("Change in boom angle to remain stable if boom length is mismeasured")
     plt.xlabel("Boom Length (m)")
     plt.ylabel("Δθ (deg) needed for stability")
