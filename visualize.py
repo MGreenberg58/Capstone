@@ -244,18 +244,53 @@ if __name__ == "__main__":
 
 
     # Delta Theta plot
+    # Delta Theta plot (CORRECT: uses stable points)
     plt.figure(figsize=(8,6))
-    f_theta_vs_L = interp1d(frontier_lengths, frontier_thetas, kind='linear', bounds_error=False, fill_value=np.nan)
-    delta_L = 0.1
-    theta_shifted = f_theta_vs_L(frontier_lengths + delta_L)
-    delta_theta = theta_shifted - frontier_thetas
-    valid_theta = ~np.isnan(delta_theta)
 
-    plt.plot(frontier_lengths[valid_theta], np.rad2deg(delta_theta[valid_theta]), '-o', markersize=4, color='blue')
-    plt.title("Change in boom angle to remain stable if boom length is mismeasured")
-    plt.xlabel("Boom Length (m)")
-    plt.ylabel("Δθ (deg) needed for stability")
+    # --- Build a clean inverse frontier θ_f(L) ---
+    idx = np.argsort(frontier_lengths)
+    L_sorted = frontier_lengths[idx]
+    θ_sorted = frontier_thetas[idx]
+
+    # Enforce single-valued inverse
+    L_unique, unique_idx = np.unique(L_sorted, return_index=True)
+    θ_unique = θ_sorted[unique_idx]
+
+    θ_of_L = interp1d(
+        L_unique,
+        θ_unique,
+        kind='linear',
+        bounds_error=False,
+        fill_value=np.nan
+    )
+
+    # --- Stable point data ---
+    θ0 = np.arctan2(stable_pts[:,1], stable_pts[:,0])
+    L0 = stable_pts[:,2]
+
+    # --- Disturbance ---
+    ΔL = 0.1
+    L1 = L0 + ΔL
+
+    # --- Project onto frontier ---
+    θ1 = θ_of_L(L1)
+
+    delta_theta = θ1 - θ0
+    valid = ~np.isnan(delta_theta)
+
+    # --- Plot ---
+    plt.scatter(
+        L0[valid],
+        np.rad2deg(delta_theta[valid]),
+        s=15,
+        alpha=0.6
+    )
+
+    plt.title("Angle correction needed after +0.1 m boom length increase")
+    plt.xlabel("Original Boom Length (m)")
+    plt.ylabel("Δθ (deg) to reach stability frontier")
     plt.grid(True)
+
 
     # Delta mass plot
     plt.figure(figsize=(8,6))
