@@ -228,7 +228,7 @@ if __name__ == "__main__":
     plt.ylabel("Max Stable Boom Length (m)")
     plt.grid(True)
 
-    # Delta L plot
+    # Delta L plot frontier
     f = interp1d(frontier_thetas, frontier_lengths, kind='linear', bounds_error=False, fill_value=np.nan)
     delta_theta = -np.deg2rad(1)
     L_shifted = f(frontier_thetas + delta_theta)
@@ -242,17 +242,44 @@ if __name__ == "__main__":
     plt.ylabel("ΔBoom Length (m) to be stable for θ - 1 deg")
     plt.grid(True)
 
-
-    # Delta Theta plot
-    # Delta Theta plot (CORRECT: uses stable points)
+    # Frontier function L_f(θ)
     plt.figure(figsize=(8,6))
+    L_of_theta = interp1d(
+        frontier_thetas,
+        frontier_lengths,
+        kind='linear',
+        bounds_error=False,
+        fill_value=np.nan
+    )
 
-    # --- Build a clean inverse frontier θ_f(L) ---
+    θ0 = np.arctan2(stable_pts[:,1], stable_pts[:,0])
+    L0 = stable_pts[:,2]
+
+    Δθ = -np.deg2rad(1)  # angle mismeasurement
+    θ1 = θ0 + Δθ
+
+    L1 = L_of_theta(θ1)
+    delta_L = L1 - L0
+    valid = ~np.isnan(delta_L)
+
+    plt.scatter(
+        L0[valid],
+        delta_L[valid],
+        s=15,
+        alpha=0.6
+    )
+
+    plt.title("Boom length correction after −1° angle mismeasurement")
+    plt.xlabel("Original Boom Length (m)")
+    plt.ylabel("ΔBoom Length (m) to reach stability frontier")
+    plt.grid(True)
+
+
+    # Delta Theta plot all stable
+    plt.figure(figsize=(8,6))
     idx = np.argsort(frontier_lengths)
     L_sorted = frontier_lengths[idx]
     θ_sorted = frontier_thetas[idx]
-
-    # Enforce single-valued inverse
     L_unique, unique_idx = np.unique(L_sorted, return_index=True)
     θ_unique = θ_sorted[unique_idx]
 
@@ -264,21 +291,16 @@ if __name__ == "__main__":
         fill_value=np.nan
     )
 
-    # --- Stable point data ---
     θ0 = np.arctan2(stable_pts[:,1], stable_pts[:,0])
     L0 = stable_pts[:,2]
 
-    # --- Disturbance ---
     ΔL = 0.1
     L1 = L0 + ΔL
-
-    # --- Project onto frontier ---
     θ1 = θ_of_L(L1)
 
     delta_theta = θ1 - θ0
     valid = ~np.isnan(delta_theta)
 
-    # --- Plot ---
     plt.scatter(
         L0[valid],
         np.rad2deg(delta_theta[valid]),
@@ -291,6 +313,19 @@ if __name__ == "__main__":
     plt.ylabel("Δθ (deg) to reach stability frontier")
     plt.grid(True)
 
+    # Delta Theta plot
+    plt.figure(figsize=(8,6))
+    f_theta_vs_L = interp1d(frontier_lengths, frontier_thetas, kind='linear', bounds_error=False, fill_value=np.nan)
+    delta_L = 0.1
+    theta_shifted = f_theta_vs_L(frontier_lengths + delta_L)
+    delta_theta = theta_shifted - frontier_thetas
+    valid_theta = ~np.isnan(delta_theta)
+
+    plt.plot(frontier_lengths[valid_theta], np.rad2deg(delta_theta[valid_theta]), '-o', markersize=4, color='blue')
+    plt.title("Change in boom angle to remain stable if boom length is mismeasured")
+    plt.xlabel("Boom Length (m)")
+    plt.ylabel("Δθ (deg) needed for stability")
+    plt.grid(True)
 
     # Delta mass plot
     plt.figure(figsize=(8,6))
@@ -311,6 +346,36 @@ if __name__ == "__main__":
     plt.xlabel("Boom Length (m)")
     plt.ylabel("ΔBoom Length (m) to be stable for θ - 1 deg")
     plt.grid(True)
+
+    # Delta mass stable
+    plt.figure(figsize=(8,6))
+    L_heavy_of_theta = interp1d(
+        frontier_thetas2,
+        frontier_lengths2,
+        kind='linear',
+        bounds_error=False,
+        fill_value=np.nan
+    )
+
+    θ0 = np.arctan2(stable_pts[:,1], stable_pts[:,0])
+    L0 = stable_pts[:,2]
+
+    L_heavy = L_heavy_of_theta(θ0)
+    delta_L = L_heavy - L0
+    valid = ~np.isnan(delta_L)
+
+    plt.scatter(
+        L0[valid],
+        delta_L[valid],
+        s=15,
+        alpha=0.6
+    )
+
+    plt.title("Boom length correction after +5% payload mass")
+    plt.xlabel("Original Boom Length (m)")
+    plt.ylabel("ΔBoom Length (m) to reach stability frontier")
+    plt.grid(True)
+
 
     # Rainbow Delta L
     plt.figure(figsize=(10,9))
@@ -353,8 +418,10 @@ if __name__ == "__main__":
     delta_theta_needed = f(L_shifted) - np.arctan2(stable_pts[:,1], stable_pts[:,0])
     valid = ~np.isnan(delta_theta_needed)
 
+    delta_theta_needed = np.rad2deg(delta_theta_needed)
+
     vmin = delta_theta_needed[valid].min()
-    vcenter = -0.1
+    vcenter = -5
     vmax = delta_theta_needed[valid].max()
 
     norm = TwoSlopeNorm(vmin=vmin, vcenter=vcenter, vmax=vmax)
@@ -362,7 +429,7 @@ if __name__ == "__main__":
     scatter = plt.scatter(
         stable_pts[valid,0],
         stable_pts[valid,1],
-        c=np.rad2deg(delta_theta_needed[valid]),
+        c=delta_theta_needed[valid],
         cmap='RdYlGn_r',
         norm=norm,
         s=40
