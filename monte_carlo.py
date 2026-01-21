@@ -87,6 +87,20 @@ def extract_probabilistic_frontier(
 
     return np.array(frontier_L), np.array(frontier_theta)
 
+def extract_probability_contour(
+    L_vals, theta_vals, P, p_target=0.5
+):
+    L_contour = []
+    theta_contour = []
+
+    for i, theta in enumerate(theta_vals):
+        idx = np.argmin(np.abs(P[i, :] - p_target))
+        L_contour.append(L_vals[idx])
+        theta_contour.append(theta)
+
+    return np.array(L_contour), np.array(theta_contour)
+
+
 def probability_sensitivity(
     L, theta,
     means, stds,
@@ -276,19 +290,27 @@ if __name__ == "__main__":
     plt.show()
 
     # Example sensitivity evaluation
-    L_test = 60.0
-    theta_test = np.deg2rad(45)
+    L_test = 20.0
+    theta_test = np.deg2rad(20)
 
-    for var in ["payload_mass", "theta", "L"]:
-        s = probability_sensitivity(
-            L_test, theta_test,
-            means, stds,
-            alpha, beta, d_base,
-            var,
-            eps_fraction=0.05,
-            N=10000
-        )
-        print(f"Sensitivity dP/d({var}) = {s:.3e}")
+    vars_to_analyze = ["payload_mass", "boom_mass", "base_mass", "theta", "L"]
+    L_50, theta_50 = extract_probability_contour(L_vals, theta_vals, P, p_target=0.5)
+    sens = {v: [] for v in vars_to_analyze}
+
+    for Lf, tf in zip(L_50, theta_50):
+        for v in vars_to_analyze:
+            s = probability_sensitivity(
+                Lf, tf,
+                means, stds,
+                alpha, beta, d_base,
+                v,
+                eps_fraction=0.05,
+                N=8000
+            )
+            sens[v].append(s)
+
+    for v in vars_to_analyze:
+        sens[v] = np.array(sens[v])
 
     for var in ["payload_mass", "boom_mass", "base_mass", "theta", "L"]:
         s = margin_sensitivity(
@@ -299,3 +321,22 @@ if __name__ == "__main__":
             eps_fraction=1e-4
         )
         print(f"dg/d({var}) = {s:.3e}")
+
+    plt.figure(figsize=(10, 6))
+
+    for v in vars_to_analyze:
+        plt.plot(
+            np.rad2deg(theta_50),
+            sens[v],
+            label=f"dP/d({v})"
+        )
+
+    plt.axhline(0, color="k", linestyle="--", linewidth=0.8)
+    plt.xlabel("Boom Angle θ (deg)")
+    plt.ylabel("Probability Sensitivity")
+    plt.title("Tip Probability Sensitivities Along 50% Tipping Frontier")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+    
