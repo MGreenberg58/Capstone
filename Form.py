@@ -1,6 +1,60 @@
 import numpy as np
 from scipy.stats import norm
 from scipy.optimize import minimize
+import matplotlib.pyplot as plt
+
+def compute_frontier_with_stability(
+    boom_mass, payload_mass, base_mass,
+    alpha, beta, d_base,
+    L_min=10.0, L_max=60.0, L_step=3,
+    θ_range=np.linspace(0, 1.5, 100)):
+    stable_pts = []
+    unstable_pts = []
+    frontier_pts = []
+    frontier_lengths = []
+    frontier_thetas = []
+
+    for θ in θ_range:
+        max_stable_L = None
+        L = L_min
+
+        while L <= L_max:
+            x_boom_cg = alpha * L * np.cos(θ)
+            x_payload = beta * L * np.cos(θ)
+
+            boom_moment    = boom_mass    * g * (-x_boom_cg)
+            payload_moment = payload_mass * g * (-x_payload)
+            base_moment    = base_mass    * g * d_base
+
+            net = boom_moment + payload_moment + base_moment
+
+            θ_total = θ
+            x_tip = L * np.cos(θ_total)
+            y_tip = L * np.sin(θ_total)
+
+            if net > 0:
+                stable_pts.append((x_tip, y_tip, L))
+                max_stable_L = L
+            else:
+                unstable_pts.append((x_tip, y_tip, L))
+
+            L += L_step
+
+        if max_stable_L is not None:
+            θ_total = θ
+            x_f = max_stable_L * np.cos(θ_total)
+            y_f = max_stable_L * np.sin(θ_total)
+            frontier_pts.append((x_f, y_f))
+            frontier_lengths.append(max_stable_L)
+            frontier_thetas.append(θ)   
+
+    return (
+        np.array(stable_pts),
+        np.array(unstable_pts),
+        np.array(frontier_pts),
+        np.array(frontier_lengths),
+        np.array(frontier_thetas)
+    )
 
 """
 FORM + Importance Sampling for Crane Tip-Over Reliability
@@ -174,8 +228,8 @@ if __name__ == "__main__":
         8000.0,          # boom_mass
         500.0,           # payload_mass
         20000.0,         # base_mass
-        10.0,            # L (m)
-        np.deg2rad(10)   # theta (rad)
+        19.0,            # L (m)
+        np.deg2rad(20)   # theta (rad)
     ])
 
     stds = np.array([
@@ -189,6 +243,31 @@ if __name__ == "__main__":
     alpha = 0.5
     beta = 1.0
     d_base = 4.0
+
+
+    boom_mass    = 8000.0
+    payload_mass = 500.0
+    base_mass    = 20000.0
+
+    alpha = 0.5
+    beta  = 1.0
+    d_base = 4.0
+
+    boom_m_adj = boom_mass * (1 + 0.0) + 0.0
+    payload_m_adj = payload_mass * (1 + 0.0) + 0.0
+    base_m_adj = base_mass * (1 + 0.0) + 0.0
+
+    min_len = 10 * (1 + 0.0) + 0.0
+    max_len = 60 * (1 + 0.0) + 0.0
+
+    ang_range = np.linspace(-0.02, np.deg2rad(90) * (1 + 0.00) , 500) + 0.0
+
+    stable_pts, unstable_pts, frontier_pts, frontier_lengths, frontier_thetas = compute_frontier_with_stability(
+        boom_m_adj, payload_m_adj, base_m_adj,
+        alpha, beta, d_base,
+        L_min=min_len, L_max=max_len, L_step=1,
+        θ_range=ang_range,
+    )
 
     print("Running FORM analysis...")
     beta_form, Pf_form, u_star, x_star = form_analysis(
@@ -228,3 +307,81 @@ if __name__ == "__main__":
     print("\nSensitivity of Pf to mean values:")
     for name, s in zip(names, sens_mu):
         print(f"  dPf/dmu {name:12s}: {s:+.3e}")
+
+
+    from collections import defaultdict
+
+    names = ["boom_mass", "payload_mass", "base_mass", "L", "theta"]
+
+    alpha_history = defaultdict(list)
+    beta_history = []
+    Pf_history = []
+    theta_valid = []
+    for Lf, θf in zip(frontier_lengths, frontier_thetas):
+
+        means_local = np.array([
+            means[0],
+            means[1],
+            means[2],
+            Lf,
+            θf
+        ])
+
+        stds_local = np.array([
+            stds[0],
+            stds[1],
+            stds[2],
+            stds[3],
+            stds[4]
+        ])
+
+        try:
+            β, Pf, u_star, _ = form_analysis(
+            means_local, stds,
+            alpha, beta, d_base)
+        except RuntimeError:
+            # Skip points where FORM fails
+            continue
+
+
+        α_vec = importance_factors(u_star)
+
+
+        beta_history.append(β)
+        Pf_history.append(Pf)
+        theta_valid.append(θf)
+
+
+        for name, a in zip(names, α_vec):
+            alpha_history[name].append(a)
+
+    theta_valid = np.array(theta_valid)
+    beta_history = np.array(beta_history)
+    for k in alpha_history:
+        alpha_history[k] = np.array(alpha_history[k])
+    Pf_history = np.array(Pf_history)
+
+    plt.figure(figsize=(10,6))
+
+    for name in names:
+        plt.plot(
+            np.rad2deg(theta_valid),
+            alpha_history[name],
+            label=name
+        )
+
+    plt.axhline(0, color="k", lw=0.8)
+    plt.xlabel("Boom Angle θ (deg)")
+    plt.ylabel("FORM Importance Factor α")
+    plt.title("Uncertainty Importance Along Deterministic Stability Frontier")
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+    plt.figure()
+    plt.plot(np.rad2deg(theta_valid), beta_history)
+    plt.xlabel("Boom Angle θ (deg)")
+    plt.ylabel("Reliability Index β")
+    plt.title("Reliability Index Along Stability Frontier")
+    plt.grid(True)
+    plt.show()
