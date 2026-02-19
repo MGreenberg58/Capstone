@@ -113,6 +113,80 @@ def form_analysis(means, stds, alpha_geom, beta_geom, d_base, u,
 
     return beta, Pf, u
 
+def monte_carlo_pf_along_frontier(
+    frontier_lengths,
+    frontier_thetas,
+    means,
+    stds,
+    alpha_geom,
+    beta_geom,
+    d_base,
+    N=100000
+):
+    Pf_list = []
+
+    for Lf, θf in zip(frontier_lengths, frontier_thetas):
+
+        # Sample uncertain variables
+        samples = np.random.normal(means, stds, size=(N, len(means)))
+
+        # Override L and theta to stay on frontier
+        samples[:, 3] = Lf
+        samples[:, 4] = θf
+
+        # Evaluate limit-state
+        g_vals = np.array([
+            tipping_margin(x, alpha_geom, beta_geom, d_base)
+            for x in samples
+        ])
+
+        Pf = np.mean(g_vals >= 0)
+        Pf_list.append(Pf)
+
+    return np.array(Pf_list)
+
+def mc_mean_sensitivity_along_frontier(
+    frontier_lengths,
+    frontier_thetas,
+    means,
+    stds,
+    alpha_geom,
+    beta_geom,
+    d_base,
+    var_index,
+    delta_fraction=0.01,
+    N=50000
+):
+    Pf_sens = []
+
+    for Lf, θf in zip(frontier_lengths, frontier_thetas):
+
+        delta = delta_fraction * means[var_index]
+
+        means_plus  = means.copy()
+        means_minus = means.copy()
+
+        means_plus[var_index]  += delta
+        means_minus[var_index] -= delta
+
+        Pf_plus = monte_carlo_pf_along_frontier(
+            [Lf], [θf],
+            means_plus, stds,
+            alpha_geom, beta_geom, d_base,
+            N=N
+        )[0]
+
+        Pf_minus = monte_carlo_pf_along_frontier(
+            [Lf], [θf],
+            means_minus, stds,
+            alpha_geom, beta_geom, d_base,
+            N=N
+        )[0]
+
+        dPf_dmu = (Pf_plus - Pf_minus) / (2 * delta)
+        Pf_sens.append(dPf_dmu)
+
+    return np.array(Pf_sens)
 
 def importance_factors(u_star):
     beta = np.linalg.norm(u_star)
@@ -289,10 +363,70 @@ if __name__ == "__main__":
         plt.axis("equal")
         plt.grid(True)
 
-  
-    # plt.figure(figsize=(8,7))
-    # plt.plot(np.rad2deg(theta_valid), pf_sens_hist["L"])
-    # plt.plot(theta_valid, beta_sens_hist)
+    # Interpolate sensitivities vs L (optional smoothing)
+    f_pf_payload = interp1d(L_valid, pf_sens_hist["payload_mass"],
+                            kind='linear', bounds_error=False, fill_value=np.nan)
+
+    f_pf_L = interp1d(L_valid, pf_sens_hist["L"],
+                    kind='linear', bounds_error=False, fill_value=np.nan)
+
+    f_pf_theta = interp1d(L_valid, pf_sens_hist["theta"],
+                        kind='linear', bounds_error=False, fill_value=np.nan)
+
+    plt.figure(figsize=(8,6))
+    plt.plot(L_valid, pf_sens_hist["payload_mass"],
+            '-o', markersize=4, label="∂Pf / ∂μ_payload")
+    plt.xlabel("Boom Length Along Stability Frontier (m)")
+    plt.ylabel("Probability Sensitivity")
+    plt.title("Change in Failure Probability as Payload Mass Changes")
+    plt.grid(True)
+    
+    plt.figure(figsize=(8,6))
+    plt.plot(L_valid, pf_sens_hist["L"],
+            '-o', markersize=4, label="∂Pf / ∂μ_L")
+    plt.xlabel("Boom Length Along Stability Frontier (m)")
+    plt.ylabel("Probability Sensitivity")
+    plt.title("Change in Failure Probability as Boom Length Changes")
+    plt.grid(True)
+    
+    plt.figure(figsize=(8,6))
+    plt.plot(L_valid, pf_sens_hist["theta"],
+            '-o', markersize=4, label="∂Pf / ∂μ_theta")
+    plt.xlabel("Boom Length Along Stability Frontier (m)")
+    plt.ylabel("Probability Sensitivity")
+    plt.title("Change in Failure Probability as Theta Changes")
+    plt.grid(True)
+
+    plt.figure(figsize=(8,6))
+    plt.plot(L_valid, pf_sens_hist["payload_mass"],
+            '-o', markersize=4, label="∂Pf / ∂μ_payload")
+
+    plt.plot(L_valid, pf_sens_hist["L"],
+            '-o', markersize=4, label="∂Pf / ∂μ_L")
+
+    plt.plot(L_valid, pf_sens_hist["theta"],
+            '-o', markersize=4, label="∂Pf / ∂μ_theta")
+
+    plt.axhline(0, linestyle="--")
+    plt.xlabel("Boom Length Along Stability Frontier (m)")
+    plt.ylabel("Probability Sensitivity")
+    plt.title("Change in Failure Probability Along Stability Frontier")
+    plt.legend()
+    plt.grid(True)
+
+    x_reach = L_valid * np.cos(theta_valid)
+
+    plt.figure(figsize=(8,6))
+    plt.plot(x_reach, pf_sens_hist["payload_mass"], '-o', markersize=4, label="payload")
+    plt.plot(x_reach, pf_sens_hist["L"], '-o', markersize=4, label="length")
+    plt.plot(x_reach, pf_sens_hist["theta"], '-o', markersize=4, label="angle")
+
+    plt.axhline(0, linestyle="--")
+    plt.xlabel("Horizontal Boom Reach (m)")
+    plt.ylabel("∂Pf / ∂μ")
+    plt.title("Probability Sensitivity vs Horizontal Reach")
+    plt.legend()
+    plt.grid(True)
 
     plt.show()
 
