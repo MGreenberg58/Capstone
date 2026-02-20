@@ -202,19 +202,19 @@ def beta_sensitivity(alpha_vec, stds):
 
 if __name__ == "__main__":
 
-    boom_mass    = 8000.0
+    boom_mass = 8000.0
     payload_mass = 500.0
-    base_mass    = 20000.0
+    base_mass = 20000.0
 
     alpha_geom = 0.5
-    beta_geom  = 1.0
-    d_base     = 4.0
+    beta_geom = 1.0
+    d_base = 4.0
 
     means = np.array([
         boom_mass,
         payload_mass,
         base_mass,
-        19.0,
+        20.0,
         np.deg2rad(20)
     ])
 

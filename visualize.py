@@ -122,9 +122,9 @@ def compute_frontier_angle_sweep(
 
 if __name__ == "__main__":
 
-    boom_mass    = 8000.0
+    boom_mass = 8000.0
     payload_mass = 500.0
-    base_mass    = 20000.0
+    base_mass = 20000.0
 
     alpha = 0.5
     beta  = 1.0
@@ -139,19 +139,32 @@ if __name__ == "__main__":
 
     ang_range = np.linspace(-0.02, np.deg2rad(90) * (1 + 0.00) , 500) + 0.0
 
+    stds = np.array([
+        0.02 * boom_mass,
+        0.05 * payload_mass,
+        0.01 * base_mass,
+        0.05,
+        np.deg2rad(0.5)
+    ])
+
+    
+
     stable_pts, unstable_pts, frontier_pts, frontier_lengths, frontier_thetas = compute_frontier_with_stability(
         boom_m_adj, payload_m_adj, base_m_adj,
         alpha, beta, d_base,
-        L_min=min_len, L_max=max_len, L_step=0.01,
+        L_min=min_len, L_max=max_len, L_step=0.02,
         θ_range=ang_range,
     )
-
-    # stable_pts2, unstable_pts2, frontier_pts2, frontier_lengths2, frontier_thetas2 = compute_frontier_with_stability(
-    #     boom_m_adj, payload_m_adj * 1.176, base_m_adj,
-    #     alpha, beta, d_base,
-    #     L_min=min_len, L_max=max_len, L_step=0.5,
-    #     θ_range=ang_range,
-    # )
+    
+    payload_wc = payload_mass + 3 * stds[1]
+    stable_pts2, unstable_pts2, frontier_pts2, frontier_lengths2, frontier_thetas2 = compute_frontier_with_stability(
+        boom_m_adj, payload_wc, base_m_adj,
+        alpha, beta, d_base,
+        L_min=min_len, L_max=max_len, L_step=0.02,
+        θ_range=ang_range,
+    )
+    len_wc = frontier_lengths + 3 * stds[3]
+    theta_wc = frontier_thetas  - 3 * stds[4]
 
     # Rainbow stability envelope plot
     plt.figure(figsize=(10,9))
@@ -197,8 +210,54 @@ if __name__ == "__main__":
     cbar = plt.colorbar(scatter)
     cbar.set_label("Boom Length (m)")
 
+    # Rainbow stability envelope plot
+    plt.figure(figsize=(10,9))
+    Ls_stable2 = stable_pts2[:,2]
+    Ls_unstable2 = unstable_pts2[:,2]
+
+    # stable
+    scatter = plt.scatter(
+        stable_pts2[:,0], stable_pts2[:,1],
+        c=Ls_stable2,
+        cmap="viridis",
+        s=30,
+        linewidth=0.1,
+        label="Stable"
+    )
+    cmap = plt.get_cmap("viridis")
+    norm = plt.Normalize(min(Ls_stable2.min(), Ls_unstable2.min()), max(Ls_stable2.max(), Ls_unstable2.max()))
+
+    # unstable
+    plt.scatter(
+        unstable_pts2[:,0], unstable_pts2[:,1],
+        facecolors=cmap(norm(Ls_unstable2)),
+        cmap="viridis",
+        s=30,
+        linewidth=0.4,
+        edgecolor='red',
+        label="Unstable"
+    )
+
+    plt.axhline(0, color='black', linewidth=1)
+    plt.axvline(0, color='black', linewidth=1)
+    plt.title("Stability Workspace Colored by Boom Length")
+    plt.xlabel("Boom Tip X (m)")
+    plt.ylabel("Boom Tip Y (m)")
+    plt.axis("equal")
+    plt.grid(True)
+
+    legend = plt.legend(markerscale=2)
+    for handle in legend.legend_handles:
+        if hasattr(handle, "set_linewidths"):
+            handle.set_linewidths([1.5])
+
+    cbar = plt.colorbar(scatter)
+    cbar.set_label("Boom Length (m)")
+
     # Non-rainbow stability
     plt.figure(figsize=(10,6))
+    Ls_stable = stable_pts[:,2]
+    Ls_unstable = unstable_pts[:,2]
     f = interp1d(frontier_thetas, frontier_lengths, kind='linear', bounds_error=False, fill_value=np.nan)
     θ_fine = np.linspace(frontier_thetas.min(), frontier_thetas.max(), 500)
     L_frontier = f(θ_fine)
@@ -215,6 +274,20 @@ if __name__ == "__main__":
     plt.ylabel("Max Stable Boom Length (m)")
     plt.grid(True)
     plt.legend()
+
+    f_wc = interp1d(frontier_thetas2, frontier_lengths2, kind='linear', bounds_error=False, fill_value=np.nan)
+    theta_common = np.linspace(frontier_thetas.min(), frontier_thetas.max(), 500)
+    L_nom = f(theta_common)
+    L_wc  = f_wc(theta_common)
+    delta_L = L_wc - L_nom
+
+    plt.figure(figsize=(8,6))
+    plt.plot(np.rad2deg(theta_common), delta_L, '-o', markersize=4, color='red')
+    plt.axhline(0, color='black', linestyle='--', linewidth=1)
+    plt.title("Difference in Max Stable Boom Length: Nominal vs 3σ Worst-Case")
+    plt.xlabel("Boom Angle θ (deg)")
+    plt.ylabel("ΔBoom Length (m) (Worst Case − Nominal)")
+    plt.grid(True)
 
     # Shift comparison plot
     plt.figure(figsize=(8, 6))
